@@ -1,0 +1,43 @@
+# Planning material stays out of the product history when this directory is the git root.
+_origen/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/blob-report/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/

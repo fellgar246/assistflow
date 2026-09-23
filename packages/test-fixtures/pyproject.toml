@@ -1,0 +1,10 @@
+[project]
+name = "assistflow-test-fixtures"
+version = "0.1.0"
+description = "Shared fixture builders with no I/O"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

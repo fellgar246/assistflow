@@ -1,0 +1,10 @@
+[project]
+name = "assistflow-contracts"
+version = "0.1.0"
+description = "Shared schemas with no I/O"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

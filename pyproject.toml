@@ -1,0 +1,12 @@
+[project]
+name = "assistflow"
+version = "0.1.0"
+description = "Local-first customer support application"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["apps/api", "packages/contracts", "packages/test-fixtures"]

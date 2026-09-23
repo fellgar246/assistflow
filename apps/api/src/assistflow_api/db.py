@@ -1,0 +1,13 @@
+"""Database engine factory.
+
+Creating an engine does not open a connection. Callers connect when they need the database.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+
+
+def create_db_engine(database_url: str) -> Engine:
+    return create_engine(database_url, pool_pre_ping=True)

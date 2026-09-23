@@ -1,0 +1,59 @@
+variable "aws_region" {
+  description = "Region used when this stack is applied. The foundation does not apply it."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "project" {
+  description = "Product tag."
+  type        = string
+  default     = "assistflow"
+}
+
+variable "environment" {
+  description = "Environment tag."
+  type        = string
+  default     = "dev"
+}
+
+variable "cost_center" {
+  description = "Cost attribution tag."
+  type        = string
+  default     = "learning"
+}
+
+variable "budget_enabled" {
+  description = "Create the monthly AWS budget. Left off until a live stack is applied."
+  type        = bool
+  default     = false
+}
+
+variable "monthly_budget_usd" {
+  description = "Engineering ceiling recorded on the budget resource, in USD."
+  type        = string
+  default     = "5"
+}
+
+variable "enable_agentcore" {
+  description = "Hosted agent runtime. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "enable_long_term_memory" {
+  description = "Long-term agent memory. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "enable_managed_rag" {
+  description = "Managed retrieval. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "enable_schedules" {
+  description = "Scheduled jobs. Disabled by default."
+  type        = bool
+  default     = false
+}
