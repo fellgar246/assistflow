@@ -9,4 +9,23 @@ dependencies = []
 package = false
 
 [tool.uv.workspace]
-members = ["apps/api", "packages/contracts", "packages/test-fixtures"]
+members = [
+    "apps/api",
+    "packages/contracts",
+    "packages/test-fixtures",
+    "services/conversations",
+    "services/customers",
+    "services/orders",
+    "services/shipping",
+    "services/returns",
+    "services/refunds",
+    "services/tickets",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["services", "packages", "apps/api/src", "apps/api/tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

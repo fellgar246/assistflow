@@ -1,0 +1,20 @@
+[project]
+name = "assistflow-tickets"
+version = "0.1.0"
+description = "Tenant-scoped support tickets"
+requires-python = ">=3.12"
+dependencies = [
+    "assistflow-contracts",
+    "assistflow-conversations",
+    "assistflow-customers",
+    "sqlalchemy>=2",
+]
+
+[tool.uv.sources]
+assistflow-contracts = { workspace = true }
+assistflow-conversations = { workspace = true }
+assistflow-customers = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

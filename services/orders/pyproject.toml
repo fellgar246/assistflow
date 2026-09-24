@@ -1,0 +1,18 @@
+[project]
+name = "assistflow-orders"
+version = "0.1.0"
+description = "Tenant-scoped order records"
+requires-python = ">=3.12"
+dependencies = [
+    "assistflow-contracts",
+    "assistflow-customers",
+    "sqlalchemy>=2",
+]
+
+[tool.uv.sources]
+assistflow-contracts = { workspace = true }
+assistflow-customers = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

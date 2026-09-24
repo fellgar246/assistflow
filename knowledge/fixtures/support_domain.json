@@ -1,0 +1,102 @@
+{
+  "policies": [
+    "knowledge/policies/shipping-address.md",
+    "knowledge/policies/returns-and-refunds.md"
+  ],
+  "tenants": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "label": "Harbor Goods",
+      "customers": [
+        {
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+          "email": "ava.chen@example.com",
+          "display_name": "Ava Chen",
+          "status": "active",
+          "created_at": "2026-08-01T15:04:00Z"
+        }
+      ],
+      "orders": [
+        {
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+          "customer_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+          "order_number": "ORD-10482",
+          "status": "fulfilled",
+          "currency": "USD",
+          "total_cents": 4599,
+          "shipping_address": {
+            "recipient": "Ava Chen",
+            "line1": "18 Market Street",
+            "line2": "Apt 4",
+            "city": "Austin",
+            "region": "TX",
+            "postal_code": "78701",
+            "country": "US"
+          },
+          "created_at": "2026-09-01T15:00:00Z",
+          "shipment": {
+            "id": "cccccccc-cccc-4ccc-8ccc-cccccccc0001",
+            "carrier_name": "Northline Parcel",
+            "status": "in_transit",
+            "origin_hub": "DFW",
+            "estimated_delivery_on": "2099-06-15",
+            "shipped_at": "2026-09-02T18:30:00Z"
+          }
+        }
+      ],
+      "tickets": [
+        {
+          "id": "dddddddd-dddd-4ddd-8ddd-dddddddd0001",
+          "customer_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+          "priority": "normal",
+          "category": "shipping",
+          "status": "open",
+          "summary": "Where is order ORD-10482?",
+          "created_at": "2026-09-03T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "label": "Fieldline Supply",
+      "customers": [
+        {
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+          "email": "ben.ortiz@example.com",
+          "display_name": "Ben Ortiz",
+          "status": "active",
+          "created_at": "2026-08-04T11:00:00Z"
+        }
+      ],
+      "orders": [
+        {
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0002",
+          "customer_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+          "order_number": "ORD-20817",
+          "status": "fulfilled",
+          "currency": "USD",
+          "total_cents": 2200,
+          "shipping_address": {
+            "recipient": "Ben Ortiz",
+            "line1": "90 Cedar Avenue",
+            "line2": null,
+            "city": "Newark",
+            "region": "NJ",
+            "postal_code": "07102",
+            "country": "US"
+          },
+          "created_at": "2026-08-12T16:45:00Z",
+          "shipment": {
+            "id": "cccccccc-cccc-4ccc-8ccc-cccccccc0002",
+            "carrier_name": "Northline Parcel",
+            "status": "delivered",
+            "origin_hub": "EWR",
+            "estimated_delivery_on": "2026-09-10",
+            "shipped_at": "2026-08-13T13:00:00Z"
+          }
+        }
+      ],
+      "tickets": []
+    }
+  ]
+}

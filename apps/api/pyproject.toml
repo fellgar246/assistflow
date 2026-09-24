@@ -5,6 +5,13 @@ description = "AssistFlow HTTP API"
 requires-python = ">=3.12"
 dependencies = [
     "assistflow-contracts",
+    "assistflow-conversations",
+    "assistflow-customers",
+    "assistflow-orders",
+    "assistflow-shipping",
+    "assistflow-returns",
+    "assistflow-refunds",
+    "assistflow-tickets",
     "alembic>=1.14",
     "fastapi>=0.115",
     "psycopg[binary]>=3.2",
@@ -25,6 +32,13 @@ dev = [
 
 [tool.uv.sources]
 assistflow-contracts = { workspace = true }
+assistflow-conversations = { workspace = true }
+assistflow-customers = { workspace = true }
+assistflow-orders = { workspace = true }
+assistflow-shipping = { workspace = true }
+assistflow-returns = { workspace = true }
+assistflow-refunds = { workspace = true }
+assistflow-tickets = { workspace = true }
 assistflow-test-fixtures = { workspace = true }
 
 [build-system]
@@ -42,7 +56,18 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = [
+    "src",
+    "tests",
+    "../../services/conversations/src",
+    "../../services/customers/src",
+    "../../services/orders/src",
+    "../../services/shipping/src",
+    "../../services/returns/src",
+    "../../services/refunds/src",
+    "../../services/tickets/src",
+    "../../packages/contracts/src",
+]
 exclude = ["alembic"]
 plugins = ["pydantic.mypy"]
 

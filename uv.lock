@@ -11,7 +11,14 @@ members = [
     "assistflow",
     "assistflow-api",
     "assistflow-contracts",
+    "assistflow-conversations",
+    "assistflow-customers",
+    "assistflow-orders",
+    "assistflow-refunds",
+    "assistflow-returns",
+    "assistflow-shipping",
     "assistflow-test-fixtures",
+    "assistflow-tickets",
 ]
 
 [[package]]
@@ -71,6 +78,13 @@ source = { editable = "apps/api" }
 dependencies = [
     { name = "alembic" },
     { name = "assistflow-contracts" },
+    { name = "assistflow-conversations" },
+    { name = "assistflow-customers" },
+    { name = "assistflow-orders" },
+    { name = "assistflow-refunds" },
+    { name = "assistflow-returns" },
+    { name = "assistflow-shipping" },
+    { name = "assistflow-tickets" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -92,6 +106,13 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-conversations", editable = "services/conversations" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "assistflow-orders", editable = "services/orders" },
+    { name = "assistflow-refunds", editable = "services/refunds" },
+    { name = "assistflow-returns", editable = "services/returns" },
+    { name = "assistflow-shipping", editable = "services/shipping" },
+    { name = "assistflow-tickets", editable = "services/tickets" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2" },
@@ -121,9 +142,136 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2" }]
 
 [[package]]
+name = "assistflow-conversations"
+version = "0.1.0"
+source = { editable = "services/conversations" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-customers"
+version = "0.1.0"
+source = { editable = "services/customers" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-orders"
+version = "0.1.0"
+source = { editable = "services/orders" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-refunds"
+version = "0.1.0"
+source = { editable = "services/refunds" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "assistflow-orders" },
+    { name = "assistflow-returns" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "assistflow-orders", editable = "services/orders" },
+    { name = "assistflow-returns", editable = "services/returns" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-returns"
+version = "0.1.0"
+source = { editable = "services/returns" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "assistflow-orders" },
+    { name = "assistflow-shipping" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "assistflow-orders", editable = "services/orders" },
+    { name = "assistflow-shipping", editable = "services/shipping" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-shipping"
+version = "0.1.0"
+source = { editable = "services/shipping" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
 name = "assistflow-test-fixtures"
 version = "0.1.0"
 source = { editable = "packages/test-fixtures" }
+
+[[package]]
+name = "assistflow-tickets"
+version = "0.1.0"
+source = { editable = "services/tickets" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-conversations" },
+    { name = "assistflow-customers" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-conversations", editable = "services/conversations" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
 
 [[package]]
 name = "ast-serialize"

@@ -8,16 +8,23 @@ from contextlib import asynccontextmanager
 import structlog
 from assistflow_contracts import HealthStatus
 from fastapi import FastAPI
+from sqlalchemy.engine import Engine
 
 from assistflow_api.config import Settings, load_settings
+from assistflow_api.db import create_db_engine
+from assistflow_api.http import register_error_handlers
 from assistflow_api.logging import configure_logging
+from assistflow_api.routes.conversations import router as conversation_router
+from assistflow_api.routes.support import router as support_router
 
 configure_logging()
 logger = structlog.get_logger(__name__)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, engine: Engine | None = None) -> FastAPI:
     resolved = settings if settings is not None else load_settings()
+    owns_engine = engine is None
+    resolved_engine = create_db_engine(resolved.database_url) if engine is None else engine
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -32,9 +39,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             local_only_mode=resolved.local_only_mode,
         )
         yield
+        if owns_engine:
+            resolved_engine.dispose()
 
     app = FastAPI(title="AssistFlow API", lifespan=lifespan)
     app.state.settings = resolved
+    app.state.engine = resolved_engine
+    register_error_handlers(app)
+    app.include_router(support_router)
+    app.include_router(conversation_router)
 
     @app.get("/health", response_model=HealthStatus)
     def health() -> HealthStatus:

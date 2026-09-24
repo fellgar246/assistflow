@@ -1,4 +1,15 @@
-.PHONY: lint typecheck test up down lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web
+.PHONY: lint typecheck test up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web
+
+PYTHON_PATHS := src tests \
+	../../services/conversations/src \
+	../../services/customers/src \
+	../../services/orders/src \
+	../../services/shipping/src \
+	../../services/returns/src \
+	../../services/refunds/src \
+	../../services/tickets/src \
+	../../packages/contracts/src \
+	../../packages/test-fixtures/src
 
 UV ?= uv
 
@@ -15,8 +26,11 @@ down:
 	docker compose down
 
 lint-api:
-	$(UV) run --directory apps/api ruff check .
-	$(UV) run --directory apps/api ruff format --check .
+	$(UV) run --directory apps/api ruff check $(PYTHON_PATHS)
+	$(UV) run --directory apps/api ruff format --check $(PYTHON_PATHS)
+
+seed:
+	$(UV) run --directory apps/api python -m assistflow_api.seed
 
 lint-web:
 	npm --prefix apps/web run lint

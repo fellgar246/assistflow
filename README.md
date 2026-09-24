@@ -39,6 +39,50 @@ npm --prefix apps/web run dev
 
 The home page does not call a model. The API does not load a cloud SDK while AWS is disabled.
 
+Apply the database schema and load the demo support data:
+
+```bash
+uv run --directory apps/api alembic upgrade head
+make seed
+```
+
+`make seed` can be run again. It updates the same customers, orders, shipments, and tickets instead of inserting duplicates. The fixture file is `knowledge/fixtures/support_domain.json`.
+
+Demo tenant `11111111-1111-4111-8111-111111111111` (Harbor Goods) includes order `ORD-10482`, an in-transit shipment from the DFW hub, and one open ticket. Demo tenant `22222222-2222-4222-8222-222222222222` (Fieldline Supply) has a different order, `ORD-20817`. Send the tenant on every support request:
+
+```text
+X-Tenant-Id: 11111111-1111-4111-8111-111111111111
+```
+
+Conversation routes also need the customer. Both values come from these headers. The API does not take a tenant id from the request body.
+
+```text
+X-Customer-Id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001
+```
+
+`X-Correlation-Id` is optional. When it is omitted, the API assigns one and returns it on the response. Audit events for that request store the same id.
+
+Support reads:
+
+| Method | Path |
+|---|---|
+| GET | `/customers` and `/customers/{customer_id}` |
+| GET | `/orders` and `/orders/{order_number}` |
+| GET | `/orders/{order_number}/shipment` |
+| GET | `/orders/{order_number}/eligibility/address-change` |
+| GET | `/orders/{order_number}/eligibility/return` |
+| GET | `/orders/{order_number}/eligibility/refund` |
+| GET | `/tickets` and `/tickets/{ticket_id}` |
+| POST | `/tickets` |
+| POST | `/conversations` |
+| GET | `/conversations` |
+| POST | `/conversations/{conversation_id}/messages` |
+| GET | `/conversations/{conversation_id}/messages` |
+
+`POST /conversations/{conversation_id}/messages` stores the customer text only. It does not generate a reply. `POST /tickets` may include `conversation_id` when the conversation is open in the same tenant.
+
+List routes take `limit` (default 20, maximum 100) and an opaque `cursor`. The generated API document is at [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json).
+
 Stop the database with `make down`.
 
 `LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, managed-retrieval, and long-term-memory flags off, even if other variables request them. Credentials are read from the environment only. Do not commit a filled `.env` file.
