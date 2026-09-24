@@ -1,4 +1,8 @@
-"""Store and read support conversations. These routes do not call a model."""
+"""Store and read support conversations.
+
+When the assistant is enabled, a customer message also stores an in-process
+reply and a trace. This module does not import a hosted model SDK.
+"""
 
 from typing import Annotated, Any
 from uuid import UUID
@@ -28,8 +32,10 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from assistflow_api.actor import LOCAL_ACTORS, Actor, LocalActorList, require_actor
+from assistflow_api.agents import build_agent_runner
 from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
+from assistflow_api.turns import complete_agent_turn
 
 router = APIRouter()
 
@@ -159,11 +165,14 @@ def read_conversation(
 def post_customer_message(
     conversation_id: UUID,
     body: CustomerMessageCreate,
+    request: Request,
     response: Response,
     actor: DevActor,
     session: Db,
     correlation: Correlation,
 ) -> Message:
+    settings = request.app.state.settings
+    assistant_enabled = isinstance(settings, Settings) and settings.ai_enabled
     result = append_customer_message(
         session,
         actor.tenant_id,
@@ -172,7 +181,22 @@ def post_customer_message(
         body.content,
         body.idempotency_key,
         _context(actor, correlation),
+        acknowledge=not assistant_enabled,
     )
+    if assistant_enabled and not result.replayed:
+        runner = build_agent_runner(settings)
+        if runner is not None:
+            complete_agent_turn(
+                session,
+                actor.tenant_id,
+                actor.customer_id,
+                conversation_id,
+                result.message.id,
+                body.content,
+                body.idempotency_key,
+                _context(actor, correlation),
+                runner,
+            )
     if result.replayed:
         response.status_code = 200
     _stamp(response, correlation)

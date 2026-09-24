@@ -23,7 +23,8 @@ The default execution profile is local:
 
 - the web app, the API, and PostgreSQL run on the developer machine;
 - AWS, the hosted agent, the hosted model, managed retrieval, and long-term memory are off;
-- cloud adapters stay behind interfaces and are not imported while AWS is disabled.
+- cloud adapters stay behind interfaces and are not imported while AWS is disabled;
+- the in-process assistant proposes tool calls, writes a trace, and does not import a hosted-model SDK.
 
 `LOCAL_ONLY_MODE=true` is a hard stop. It turns those hosted flags off even when the rest of the environment asks for them. The API still serves health checks.
 

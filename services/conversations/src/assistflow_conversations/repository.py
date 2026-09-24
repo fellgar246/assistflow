@@ -10,7 +10,13 @@ from assistflow_customers.paging import RecordPage, apply_keyset, decode_cursor,
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from assistflow_conversations.models import AuditEventRow, ConversationRow, MessageRow
+from assistflow_conversations.models import (
+    AgentTraceRow,
+    AgentTraceStepRow,
+    AuditEventRow,
+    ConversationRow,
+    MessageRow,
+)
 
 
 @dataclass(frozen=True)
@@ -257,6 +263,129 @@ class MessageRepository:
                 created_at=record.created_at,
             )
         )
+
+
+@dataclass(frozen=True)
+class AgentTraceStepRecord:
+    id: UUID
+    step_index: int
+    kind: str
+    latency_ms: int
+    input_summary: str
+
+
+@dataclass(frozen=True)
+class AgentTraceRecord:
+    id: UUID
+    tenant_id: UUID
+    conversation_id: UUID
+    customer_id: UUID
+    correlation_id: str
+    prompt_id: str
+    prompt_version: str
+    stop_reason: str
+    input_tokens: int
+    output_tokens: int
+    created_at: datetime
+    steps: tuple[AgentTraceStepRecord, ...]
+
+
+class AgentTraceRepository:
+    """Traces are read and written with an explicit tenant scope."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def insert(self, record: AgentTraceRecord) -> None:
+        require_tenant_id(record.tenant_id)
+        ConversationRepository(self._session).require(record.tenant_id, record.conversation_id)
+        self._session.add(
+            AgentTraceRow(
+                id=record.id,
+                tenant_id=record.tenant_id,
+                conversation_id=record.conversation_id,
+                customer_id=record.customer_id,
+                correlation_id=record.correlation_id,
+                prompt_id=record.prompt_id,
+                prompt_version=record.prompt_version,
+                stop_reason=record.stop_reason,
+                input_tokens=record.input_tokens,
+                output_tokens=record.output_tokens,
+                created_at=record.created_at,
+            )
+        )
+        for step in record.steps:
+            self._session.add(
+                AgentTraceStepRow(
+                    id=step.id,
+                    trace_id=record.id,
+                    step_index=step.step_index,
+                    kind=step.kind,
+                    latency_ms=step.latency_ms,
+                    input_summary=step.input_summary,
+                )
+            )
+
+    def get(self, tenant_id: UUID, trace_id: UUID) -> AgentTraceRecord | None:
+        tenant_id = require_tenant_id(tenant_id)
+        row = self._session.scalar(
+            select(AgentTraceRow).where(
+                AgentTraceRow.tenant_id == tenant_id,
+                AgentTraceRow.id == trace_id,
+            )
+        )
+        if row is None:
+            return None
+        return _trace(row, self._steps(row.id))
+
+    def list_for_conversation(
+        self, tenant_id: UUID, conversation_id: UUID
+    ) -> list[AgentTraceRecord]:
+        tenant_id = require_tenant_id(tenant_id)
+        ConversationRepository(self._session).require(tenant_id, conversation_id)
+        rows = self._session.scalars(
+            select(AgentTraceRow)
+            .where(
+                AgentTraceRow.tenant_id == tenant_id,
+                AgentTraceRow.conversation_id == conversation_id,
+            )
+            .order_by(AgentTraceRow.created_at, AgentTraceRow.id)
+        )
+        return [_trace(row, self._steps(row.id)) for row in rows]
+
+    def _steps(self, trace_id: UUID) -> tuple[AgentTraceStepRecord, ...]:
+        rows = self._session.scalars(
+            select(AgentTraceStepRow)
+            .where(AgentTraceStepRow.trace_id == trace_id)
+            .order_by(AgentTraceStepRow.step_index)
+        )
+        return tuple(
+            AgentTraceStepRecord(
+                id=row.id,
+                step_index=row.step_index,
+                kind=row.kind,
+                latency_ms=row.latency_ms,
+                input_summary=row.input_summary,
+            )
+            for row in rows
+        )
+
+
+def _trace(row: AgentTraceRow, steps: tuple[AgentTraceStepRecord, ...]) -> AgentTraceRecord:
+    return AgentTraceRecord(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        conversation_id=row.conversation_id,
+        customer_id=row.customer_id,
+        correlation_id=row.correlation_id,
+        prompt_id=row.prompt_id,
+        prompt_version=row.prompt_version,
+        stop_reason=row.stop_reason,
+        input_tokens=row.input_tokens,
+        output_tokens=row.output_tokens,
+        created_at=row.created_at,
+        steps=steps,
+    )
 
 
 class AuditRepository:

@@ -12,10 +12,13 @@ from assistflow_conversations.commands import (
     open_conversation,
 )
 from assistflow_conversations.repository import AuditRepository
+from assistflow_test_fixtures.agent_scripts import ASK_FOR_ORDER_NUMBER
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from assistflow_api.config import load_settings
+from assistflow_api.main import create_app
 from assistflow_api.replay import replay_conversation
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
@@ -110,7 +113,7 @@ def test_conversation_is_stored_and_replayed_in_order(
     ]
     assert [item["content"] for item in first.json()["items"]] == [
         "Where is my order?",
-        ACKNOWLEDGEMENT,
+        ASK_FOR_ORDER_NUMBER,
         "It is in transit from DFW.",
     ]
     assert first.json()["items"][0]["citations"] == []
@@ -183,29 +186,31 @@ def test_ticket_links_to_the_conversation_inside_the_tenant(
 
 
 def test_acknowledgement_is_stored_once_and_states_no_order_fact(
-    support_client: TestClient,
+    support_engine: Engine,
 ) -> None:
-    headers = _headers(HARBOR, HARBOR_CUSTOMER)
-    created = support_client.post(
-        "/conversations",
-        headers=headers,
-        json={"idempotency_key": "conv-ack"},
-    )
-    conversation_id = created.json()["id"]
-    support_client.post(
-        f"/conversations/{conversation_id}/messages",
-        headers=headers,
-        json={"content": "Can you help?", "idempotency_key": "msg-ack-1"},
-    )
-    support_client.post(
-        f"/conversations/{conversation_id}/messages",
-        headers=headers,
-        json={"content": "Still there?", "idempotency_key": "msg-ack-2"},
-    )
-    transcript = support_client.get(
-        f"/conversations/{conversation_id}/messages",
-        headers=headers,
-    )
+    app = create_app(load_settings({"AI_ENABLED": "false"}), engine=support_engine)
+    with TestClient(app) as support_client:
+        headers = _headers(HARBOR, HARBOR_CUSTOMER)
+        created = support_client.post(
+            "/conversations",
+            headers=headers,
+            json={"idempotency_key": "conv-ack"},
+        )
+        conversation_id = created.json()["id"]
+        support_client.post(
+            f"/conversations/{conversation_id}/messages",
+            headers=headers,
+            json={"content": "Can you help?", "idempotency_key": "msg-ack-1"},
+        )
+        support_client.post(
+            f"/conversations/{conversation_id}/messages",
+            headers=headers,
+            json={"content": "Still there?", "idempotency_key": "msg-ack-2"},
+        )
+        transcript = support_client.get(
+            f"/conversations/{conversation_id}/messages",
+            headers=headers,
+        )
     contents = [item["content"] for item in transcript.json()["items"]]
     assert contents == ["Can you help?", ACKNOWLEDGEMENT, "Still there?"]
     lowered = ACKNOWLEDGEMENT.lower()

@@ -10,6 +10,7 @@ package = false
 
 [tool.uv.workspace]
 members = [
+    "agent/runtime",
     "apps/api",
     "packages/contracts",
     "packages/test-fixtures",
@@ -25,7 +26,7 @@ members = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["services", "packages", "apps/api/src", "apps/api/tests"]
+src = ["services", "packages", "apps/api/src", "apps/api/tests", "agent/runtime/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

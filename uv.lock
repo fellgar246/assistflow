@@ -16,6 +16,7 @@ members = [
     "assistflow-orders",
     "assistflow-refunds",
     "assistflow-returns",
+    "assistflow-runtime",
     "assistflow-shipping",
     "assistflow-test-fixtures",
     "assistflow-tickets",
@@ -83,7 +84,9 @@ dependencies = [
     { name = "assistflow-orders" },
     { name = "assistflow-refunds" },
     { name = "assistflow-returns" },
+    { name = "assistflow-runtime" },
     { name = "assistflow-shipping" },
+    { name = "assistflow-test-fixtures" },
     { name = "assistflow-tickets" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
@@ -95,7 +98,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "assistflow-test-fixtures" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
@@ -111,7 +113,9 @@ requires-dist = [
     { name = "assistflow-orders", editable = "services/orders" },
     { name = "assistflow-refunds", editable = "services/refunds" },
     { name = "assistflow-returns", editable = "services/returns" },
+    { name = "assistflow-runtime", editable = "agent/runtime" },
     { name = "assistflow-shipping", editable = "services/shipping" },
+    { name = "assistflow-test-fixtures", editable = "packages/test-fixtures" },
     { name = "assistflow-tickets", editable = "services/tickets" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
@@ -123,7 +127,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "assistflow-test-fixtures", editable = "packages/test-fixtures" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", specifier = ">=1.14" },
     { name = "pytest", specifier = ">=8" },
@@ -233,6 +236,17 @@ requires-dist = [
 ]
 
 [[package]]
+name = "assistflow-runtime"
+version = "0.1.0"
+source = { editable = "agent/runtime" }
+dependencies = [
+    { name = "assistflow-contracts" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "assistflow-contracts", editable = "packages/contracts" }]
+
+[[package]]
 name = "assistflow-shipping"
 version = "0.1.0"
 source = { editable = "services/shipping" }
@@ -253,6 +267,12 @@ requires-dist = [
 name = "assistflow-test-fixtures"
 version = "0.1.0"
 source = { editable = "packages/test-fixtures" }
+dependencies = [
+    { name = "assistflow-contracts" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "assistflow-contracts", editable = "packages/contracts" }]
 
 [[package]]
 name = "assistflow-tickets"

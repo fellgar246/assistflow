@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from assistflow_customers.db import Base, UtcDateTime
-from sqlalchemy import ForeignKey, Index, String, Text, Uuid
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -68,3 +68,42 @@ class AuditEventRow(Base):
     target_id: Mapped[UUID] = mapped_column(Uuid)
     payload: Mapped[dict[str, object]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class AgentTraceRow(Base):
+    """A turn trace. Steps stay in a child table and omit provider payloads."""
+
+    __tablename__ = "agent_traces"
+    __table_args__ = (
+        Index(
+            "ix_agent_traces_tenant_conversation",
+            "tenant_id",
+            "conversation_id",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    conversation_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("conversations.id"))
+    customer_id: Mapped[UUID] = mapped_column(Uuid)
+    correlation_id: Mapped[str] = mapped_column(String(200))
+    prompt_id: Mapped[str] = mapped_column(String(80))
+    prompt_version: Mapped[str] = mapped_column(String(40))
+    stop_reason: Mapped[str] = mapped_column(String(32))
+    input_tokens: Mapped[int] = mapped_column(Integer)
+    output_tokens: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class AgentTraceStepRow(Base):
+    __tablename__ = "agent_trace_steps"
+    __table_args__ = (Index("ix_agent_trace_steps_trace_index", "trace_id", "step_index"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    trace_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("agent_traces.id"))
+    step_index: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(32))
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    input_summary: Mapped[str] = mapped_column(String(240))

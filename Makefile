@@ -9,7 +9,8 @@ PYTHON_PATHS := src tests \
 	../../services/refunds/src \
 	../../services/tickets/src \
 	../../packages/contracts/src \
-	../../packages/test-fixtures/src
+	../../packages/test-fixtures/src \
+	../../agent/runtime/src
 
 UV ?= uv
 

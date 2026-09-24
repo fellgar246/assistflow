@@ -1,7 +1,7 @@
 [project]
-name = "assistflow-test-fixtures"
+name = "assistflow-runtime"
 version = "0.1.0"
-description = "Shared fixture builders with no I/O"
+description = "In-process assistant runner and prompt registry"
 requires-python = ">=3.12"
 dependencies = ["assistflow-contracts"]
 

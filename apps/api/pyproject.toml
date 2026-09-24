@@ -12,6 +12,8 @@ dependencies = [
     "assistflow-returns",
     "assistflow-refunds",
     "assistflow-tickets",
+    "assistflow-runtime",
+    "assistflow-test-fixtures",
     "alembic>=1.14",
     "fastapi>=0.115",
     "psycopg[binary]>=3.2",
@@ -23,7 +25,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "assistflow-test-fixtures",
     "httpx>=0.28",
     "mypy>=1.14",
     "pytest>=8",
@@ -39,6 +40,7 @@ assistflow-shipping = { workspace = true }
 assistflow-returns = { workspace = true }
 assistflow-refunds = { workspace = true }
 assistflow-tickets = { workspace = true }
+assistflow-runtime = { workspace = true }
 assistflow-test-fixtures = { workspace = true }
 
 [build-system]
@@ -67,6 +69,8 @@ files = [
     "../../services/refunds/src",
     "../../services/tickets/src",
     "../../packages/contracts/src",
+    "../../packages/test-fixtures/src",
+    "../../agent/runtime/src",
 ]
 exclude = ["alembic"]
 plugins = ["pydantic.mypy"]

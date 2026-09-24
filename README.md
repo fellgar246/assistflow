@@ -80,7 +80,7 @@ Support reads:
 | POST | `/conversations/{conversation_id}/messages` |
 | GET | `/conversations/{conversation_id}/messages` |
 
-`POST /conversations/{conversation_id}/messages` stores the customer text and, when the thread has no assistant message yet, one fixed acknowledgement. That acknowledgement does not call a model and does not state an order fact. `GET /conversations/{conversation_id}` returns one conversation for the current customer. `POST /tickets` may include `conversation_id` when the conversation is open in the same tenant.
+`POST /conversations/{conversation_id}/messages` stores the customer text. When `AI_ENABLED=true` (the local default), the API runs an in-process assistant and stores its reply plus a trace. That reply asks for an order number or a narrower question. It does not state a delivery date, and it does not call a hosted model. When `AI_ENABLED=false`, the route stores one fixed acknowledgement on the first customer message and does not state an order fact. History sent to the assistant is the newest 20 messages, and older messages are also dropped while a four-characters-per-token estimate exceeds 4000. Older rows stay in the database. `GET /conversations/{conversation_id}` returns one conversation for the current customer. `POST /tickets` may include `conversation_id` when the conversation is open in the same tenant.
 
 While `EXECUTION_MODE=local`, `GET /dev/actors` lists the seeded customers the chat can act as. The chat shows that choice in a control marked "Development only". It is a named customer, not a tenant id field, and the route is not available in other execution modes. The web app proxies `/api/*` to the API.
 

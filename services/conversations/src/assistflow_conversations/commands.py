@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from assistflow_conversations.audit import audit_payload
 from assistflow_conversations.repository import (
+    AgentTraceRecord,
+    AgentTraceRepository,
     AuditEventRecord,
     AuditRepository,
     ConversationRecord,
@@ -125,10 +127,15 @@ def append_customer_message(
     content: str,
     idempotency_key: str,
     actor: ActorContext,
+    *,
+    acknowledge: bool = True,
 ) -> MessageWrite:
-    """Store a customer message and, when needed, one fixed acknowledgement.
+    """Store a customer message.
 
-    The acknowledgement is stored text. This function does not call a model.
+    When acknowledge is true and the thread has no assistant message yet, store
+    one fixed acknowledgement. That text does not call a model and does not
+    state an order fact. Callers that run the in-process assistant pass
+    acknowledge=False and store the assistant reply themselves.
     """
     written = append_message(
         session,
@@ -140,7 +147,7 @@ def append_customer_message(
         idempotency_key,
         actor,
     )
-    if written.replayed:
+    if written.replayed or not acknowledge:
         return written
     messages = MessageRepository(session)
     if not messages.has_role(tenant_id, conversation_id, MessageRole.ASSISTANT):
@@ -220,6 +227,35 @@ def append_message(
         created_at=created_at,
     )
     return MessageWrite(message=message, replayed=False)
+
+
+def record_agent_trace(
+    session: Session,
+    record: AgentTraceRecord,
+    actor: ActorContext,
+) -> None:
+    """Store a trace and audit the id, prompt version, and stop reason.
+
+    The audit payload does not include prompt text or step summaries.
+    """
+    AgentTraceRepository(session).insert(record)
+    _audit(
+        session,
+        record.tenant_id,
+        actor,
+        action="agent.trace_recorded",
+        target_type="agent_trace",
+        target_id=record.id,
+        created_at=record.created_at,
+        fields={
+            "trace_id": str(record.id),
+            "conversation_id": str(record.conversation_id),
+            "prompt_id": record.prompt_id,
+            "prompt_version": record.prompt_version,
+            "stop_reason": record.stop_reason,
+            "step_count": len(record.steps),
+        },
+    )
 
 
 def change_conversation_status(

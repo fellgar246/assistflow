@@ -100,7 +100,10 @@ class OpenConversation(BaseModel):
 
 
 class CustomerMessageCreate(BaseModel):
-    """Store a customer message. The server sets the role and does not call a model."""
+    """Store a customer message.
+
+    The server sets the role. This payload does not select a hosted model.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
