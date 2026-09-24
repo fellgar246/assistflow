@@ -238,3 +238,23 @@ def test_each_tool_rejects_a_missing_id_and_a_cross_tenant_read(support_session:
         assert invalid.status is ToolStatus.FAILED
         assert invalid.error_code == "validation_error"
         assert "Traceback" not in (hidden.summary + invalid.summary)
+
+
+def test_tier3_names_are_not_advertised() -> None:
+    from assistflow_tools.models import GetOrderArgs, RiskLevel
+    from assistflow_tools.registry import RegisteredTool, ToolRegistry
+
+    def _unused(context: ToolContext, arguments: object) -> dict[str, object]:
+        del context, arguments
+        return {}
+
+    registry = ToolRegistry(
+        {
+            "get_order": RegisteredTool("get_order", GetOrderArgs, _unused),
+            "delete_account": RegisteredTool(
+                "delete_account", GetOrderArgs, _unused, risk_level=RiskLevel.TIER3
+            ),
+        }
+    )
+    advertised = {tool.name for tool in registry.advertised()}
+    assert advertised == {"get_order"}

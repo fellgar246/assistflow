@@ -66,6 +66,13 @@ class ToolRegistry:
     def names(self) -> frozenset[str]:
         return frozenset(self._tools)
 
+    def lookup(self, name: str) -> RegisteredTool | None:
+        return self._tools.get(name)
+
+    def advertised(self) -> list[RegisteredTool]:
+        """Tools the model may see. Tier 3 names are never included."""
+        return [tool for tool in self._tools.values() if tool.risk_level is not RiskLevel.TIER3]
+
     def execute(
         self,
         name: str,

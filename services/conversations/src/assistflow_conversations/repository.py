@@ -287,6 +287,8 @@ class AgentTraceRecord:
     stop_reason: str
     input_tokens: int
     output_tokens: int
+    provider: str
+    model_id: str
     created_at: datetime
     steps: tuple[AgentTraceStepRecord, ...]
 
@@ -312,6 +314,8 @@ class AgentTraceRepository:
                 stop_reason=record.stop_reason,
                 input_tokens=record.input_tokens,
                 output_tokens=record.output_tokens,
+                provider=record.provider,
+                model_id=record.model_id,
                 created_at=record.created_at,
             )
         )
@@ -384,6 +388,8 @@ def _trace(row: AgentTraceRow, steps: tuple[AgentTraceStepRecord, ...]) -> Agent
         stop_reason=row.stop_reason,
         input_tokens=row.input_tokens,
         output_tokens=row.output_tokens,
+        provider=row.provider,
+        model_id=row.model_id,
         created_at=row.created_at,
         steps=steps,
     )
@@ -451,9 +457,7 @@ class ToolExecutionRepository:
             )
         )
 
-    def attach_message(
-        self, tenant_id: UUID, execution_ids: list[UUID], message_id: UUID
-    ) -> None:
+    def attach_message(self, tenant_id: UUID, execution_ids: list[UUID], message_id: UUID) -> None:
         tenant_id = require_tenant_id(tenant_id)
         if not execution_ids:
             return

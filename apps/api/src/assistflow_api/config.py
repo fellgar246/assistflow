@@ -29,6 +29,11 @@ class RagProvider(StrEnum):
     MANAGED = "managed"
 
 
+class ModelProvider(StrEnum):
+    MOCK = "mock"
+    BEDROCK = "bedrock"
+
+
 class ProfileDefaults(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -87,6 +92,10 @@ class Settings(BaseModel):
     managed_rag_enabled: bool
     local_only_mode: bool
     database_url: str
+    model_provider: ModelProvider = ModelProvider.MOCK
+    bedrock_model_id: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    aws_region: str = "us-east-1"
+    trace_debug: bool = False
     max_agent_steps: int = 8
     max_tool_calls_per_turn: int = 5
     max_model_calls_per_turn: int = 4
@@ -142,6 +151,14 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             rag_provider = RagProvider.LOCAL
 
     database_url = values.get("DATABASE_URL", "").strip() or DEFAULT_DATABASE_URL
+    model_provider = _model_provider(values.get("MODEL_PROVIDER"))
+    if model_provider is ModelProvider.BEDROCK and (local_only or not bedrock_enabled):
+        model_provider = ModelProvider.MOCK
+    bedrock_model_id = values.get("BEDROCK_MODEL_ID", "").strip() or (
+        "anthropic.claude-3-5-haiku-20241022-v1:0"
+    )
+    aws_region = values.get("AWS_REGION", "").strip() or "us-east-1"
+    trace_debug = _optional_bool(values, "TRACE_DEBUG", False)
     return Settings(
         execution_mode=mode,
         aws_enabled=aws_enabled,
@@ -153,6 +170,10 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         managed_rag_enabled=managed_rag_enabled,
         local_only_mode=local_only,
         database_url=database_url,
+        model_provider=model_provider,
+        bedrock_model_id=bedrock_model_id,
+        aws_region=aws_region,
+        trace_debug=trace_debug,
         max_agent_steps=_optional_int(values, "MAX_AGENT_STEPS", 8),
         max_tool_calls_per_turn=_optional_int(values, "MAX_TOOL_CALLS_PER_TURN", 5),
         max_model_calls_per_turn=_optional_int(values, "MAX_MODEL_CALLS_PER_TURN", 4),
@@ -178,6 +199,15 @@ def _execution_mode(raw: str | None) -> ExecutionMode:
         return ExecutionMode(raw.strip().lower())
     except ValueError as exc:
         raise ValueError("Invalid EXECUTION_MODE. Expected local, aws-demo, or showcase.") from exc
+
+
+def _model_provider(raw: str | None) -> ModelProvider:
+    if raw is None or raw.strip() == "":
+        return ModelProvider.MOCK
+    try:
+        return ModelProvider(raw.strip().lower())
+    except ValueError as exc:
+        raise ValueError("Invalid MODEL_PROVIDER. Expected mock or bedrock.") from exc
 
 
 def _rag_provider(raw: str | None, default: RagProvider) -> RagProvider:

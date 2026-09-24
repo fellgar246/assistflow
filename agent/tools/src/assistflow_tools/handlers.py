@@ -41,8 +41,10 @@ def service_handlers(session: Session, *, today: date | None = None) -> dict[str
 
 def _order_handler(session: Session, today: date) -> Handler:
     def handle(context: ToolContext, arguments: object) -> dict[str, object]:
-        parsed = arguments if isinstance(arguments, GetOrderArgs) else GetOrderArgs.model_validate(
+        parsed = (
             arguments
+            if isinstance(arguments, GetOrderArgs)
+            else GetOrderArgs.model_validate(arguments)
         )
         order = _visible_order(session, context, parsed.order_id)
         shipment = ShipmentRepository(session).get_by_order(context.tenant_id, order.id)

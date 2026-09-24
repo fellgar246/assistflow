@@ -4,7 +4,7 @@ This module performs no input or output. It does not carry cloud clients.
 """
 
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,12 +15,26 @@ from assistflow_contracts.conversation import MessageRole
 class StopReason(StrEnum):
     COMPLETED = "completed"
     STOPPED_BUDGET = "stopped_budget"
+    FAILED = "failed"
 
 
 class StepKind(StrEnum):
     MODEL = "model"
     TOOL_PROPOSAL = "tool_proposal"
+    TOOL_DENIAL = "tool_denial"
     BUDGET = "budget"
+
+
+class ProviderErrorCode(StrEnum):
+    TIMEOUT = "timeout"
+    THROTTLED = "throttled"
+    MALFORMED = "malformed"
+
+
+class ModelMessageRole(StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"
 
 
 class PromptRef(BaseModel):
@@ -88,17 +102,8 @@ class AgentTrace(BaseModel):
     prompt_version: str
     stop_reason: StopReason
     steps: list[TraceStep]
-
-
-class AgentResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    assistant_message: str = Field(min_length=1)
-    proposed_tool_calls: list[ProposedToolCall]
-    trace_id: UUID
-    stop_reason: StopReason
-    usage: Usage
-    trace: AgentTrace
+    provider: str = "mock"
+    model_id: str = "mock"
 
 
 class ScriptedStep(BaseModel):
@@ -117,6 +122,111 @@ class ScriptedPlan(BaseModel):
 
     assistant_message: str = Field(min_length=1)
     steps: list[ScriptedStep]
+
+
+class ExecutedTool(BaseModel):
+    """A tool call the application already ran or denied during the turn."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    status: str
+    error_code: str | None = None
+    summary: str
+    body: dict[str, Any] | None = None
+    risk_level: str
+    arguments_hash: str
+
+
+class AgentResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    assistant_message: str = Field(min_length=1)
+    proposed_tool_calls: list[ProposedToolCall]
+    trace_id: UUID
+    stop_reason: StopReason
+    usage: Usage
+    trace: AgentTrace
+    executed_tools: list[ExecutedTool] = Field(default_factory=list)
+    tools_handled: bool = False
+
+
+class ModelMessage(BaseModel):
+    """One message passed to a model adapter. Tool messages carry a safe JSON summary."""
+
+    model_config = ConfigDict(frozen=True)
+
+    role: ModelMessageRole
+    content: str
+    tool_name: str | None = None
+    tool_call_id: str | None = None
+
+
+class ToolSchema(BaseModel):
+    """Allowlisted tool description advertised to the model."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=400)
+    input_schema: dict[str, Any]
+
+
+class ToolUseRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=80)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdapterUsage(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+
+
+class ModelText(BaseModel):
+    kind: Literal["text"] = "text"
+    text: str
+    usage: AdapterUsage
+    provider: str
+    model_id: str
+    latency_ms: int = Field(default=0, ge=0)
+
+
+class ModelToolUse(BaseModel):
+    kind: Literal["tool_use"] = "tool_use"
+    requests: list[ToolUseRequest]
+    usage: AdapterUsage
+    provider: str
+    model_id: str
+    latency_ms: int = Field(default=0, ge=0)
+
+
+class ModelProviderError(BaseModel):
+    kind: Literal["error"] = "error"
+    code: ProviderErrorCode
+    usage: AdapterUsage = Field(default_factory=AdapterUsage)
+    provider: str
+    model_id: str
+    latency_ms: int = Field(default=0, ge=0)
+
+
+ModelResponse = ModelText | ModelToolUse | ModelProviderError
+
+
+class ModelAdapter(Protocol):
+    """One model call. The application executes tools; the adapter only proposes."""
+
+    def complete(
+        self,
+        messages: list[ModelMessage],
+        tools: list[ToolSchema],
+        max_output_tokens: int,
+    ) -> ModelResponse:
+        """Return assistant text, tool-use requests, or a typed provider error."""
 
 
 class AgentRunner(Protocol):

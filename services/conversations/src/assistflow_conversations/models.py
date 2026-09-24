@@ -94,6 +94,8 @@ class AgentTraceRow(Base):
     stop_reason: Mapped[str] = mapped_column(String(32))
     input_tokens: Mapped[int] = mapped_column(Integer)
     output_tokens: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String(32), default="mock")
+    model_id: Mapped[str] = mapped_column(String(200), default="mock")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
