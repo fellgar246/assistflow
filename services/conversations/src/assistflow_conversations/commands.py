@@ -30,6 +30,8 @@ from assistflow_conversations.repository import (
     ConversationRepository,
     MessageRecord,
     MessageRepository,
+    ToolExecutionRecord,
+    ToolExecutionRepository,
 )
 from assistflow_conversations.status import transition_status
 
@@ -254,6 +256,35 @@ def record_agent_trace(
             "prompt_version": record.prompt_version,
             "stop_reason": record.stop_reason,
             "step_count": len(record.steps),
+        },
+    )
+
+
+def record_tool_execution(
+    session: Session,
+    record: ToolExecutionRecord,
+    actor: ActorContext,
+) -> None:
+    """Store one tool call. Failures and denials are audited with the correlation id."""
+    ToolExecutionRepository(session).insert(record)
+    if record.status not in {"failed", "blocked"}:
+        return
+    action = "tool.denied" if record.status == "blocked" else "tool.failed"
+    _audit(
+        session,
+        record.tenant_id,
+        actor,
+        action=action,
+        target_type="tool_execution",
+        target_id=record.id,
+        created_at=record.finished_at or record.started_at,
+        fields={
+            "tool_name": record.tool_name,
+            "status": record.status,
+            "risk_level": record.risk_level,
+            "arguments_hash": record.arguments_hash,
+            "result_summary": record.result_summary,
+            "correlation_id": record.correlation_id,
         },
     )
 

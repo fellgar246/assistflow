@@ -1,0 +1,25 @@
+[project]
+name = "assistflow-tools"
+version = "0.1.0"
+description = "Read-only support tools and the tool registry"
+requires-python = ">=3.12"
+dependencies = [
+    "assistflow-contracts",
+    "assistflow-customers",
+    "assistflow-orders",
+    "assistflow-shipping",
+    "assistflow-tickets",
+    "pydantic>=2",
+    "sqlalchemy>=2",
+]
+
+[tool.uv.sources]
+assistflow-contracts = { workspace = true }
+assistflow-customers = { workspace = true }
+assistflow-orders = { workspace = true }
+assistflow-shipping = { workspace = true }
+assistflow-tickets = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

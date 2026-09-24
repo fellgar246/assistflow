@@ -13,6 +13,7 @@ dependencies = [
     "assistflow-refunds",
     "assistflow-tickets",
     "assistflow-runtime",
+    "assistflow-tools",
     "assistflow-test-fixtures",
     "alembic>=1.14",
     "fastapi>=0.115",
@@ -41,6 +42,7 @@ assistflow-returns = { workspace = true }
 assistflow-refunds = { workspace = true }
 assistflow-tickets = { workspace = true }
 assistflow-runtime = { workspace = true }
+assistflow-tools = { workspace = true }
 assistflow-test-fixtures = { workspace = true }
 
 [build-system]
@@ -71,9 +73,10 @@ files = [
     "../../packages/contracts/src",
     "../../packages/test-fixtures/src",
     "../../agent/runtime/src",
+    "../../agent/tools/src",
 ]
 exclude = ["alembic"]
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "../../agent/tools/tests"]

@@ -20,6 +20,7 @@ members = [
     "assistflow-shipping",
     "assistflow-test-fixtures",
     "assistflow-tickets",
+    "assistflow-tools",
 ]
 
 [[package]]
@@ -88,6 +89,7 @@ dependencies = [
     { name = "assistflow-shipping" },
     { name = "assistflow-test-fixtures" },
     { name = "assistflow-tickets" },
+    { name = "assistflow-tools" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -117,6 +119,7 @@ requires-dist = [
     { name = "assistflow-shipping", editable = "services/shipping" },
     { name = "assistflow-test-fixtures", editable = "packages/test-fixtures" },
     { name = "assistflow-tickets", editable = "services/tickets" },
+    { name = "assistflow-tools", editable = "agent/tools" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2" },
@@ -290,6 +293,31 @@ requires-dist = [
     { name = "assistflow-contracts", editable = "packages/contracts" },
     { name = "assistflow-conversations", editable = "services/conversations" },
     { name = "assistflow-customers", editable = "services/customers" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-tools"
+version = "0.1.0"
+source = { editable = "agent/tools" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "assistflow-orders" },
+    { name = "assistflow-shipping" },
+    { name = "assistflow-tickets" },
+    { name = "pydantic" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "assistflow-orders", editable = "services/orders" },
+    { name = "assistflow-shipping", editable = "services/shipping" },
+    { name = "assistflow-tickets", editable = "services/tickets" },
+    { name = "pydantic", specifier = ">=2" },
     { name = "sqlalchemy", specifier = ">=2" },
 ]
 

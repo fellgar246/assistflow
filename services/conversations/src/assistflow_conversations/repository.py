@@ -16,6 +16,7 @@ from assistflow_conversations.models import (
     AuditEventRow,
     ConversationRow,
     MessageRow,
+    ToolExecutionRow,
 )
 
 
@@ -386,6 +387,99 @@ def _trace(row: AgentTraceRow, steps: tuple[AgentTraceStepRecord, ...]) -> Agent
         created_at=row.created_at,
         steps=steps,
     )
+
+
+@dataclass(frozen=True)
+class ToolExecutionRecord:
+    id: UUID
+    tenant_id: UUID
+    conversation_id: UUID
+    correlation_id: str
+    assistant_message_id: UUID | None
+    tool_name: str
+    arguments_hash: str
+    status: str
+    risk_level: str
+    approval_id: UUID | None
+    started_at: datetime
+    finished_at: datetime | None
+    result_summary: str
+
+
+def _tool_execution(row: ToolExecutionRow) -> ToolExecutionRecord:
+    return ToolExecutionRecord(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        conversation_id=row.conversation_id,
+        correlation_id=row.correlation_id,
+        assistant_message_id=row.assistant_message_id,
+        tool_name=row.tool_name,
+        arguments_hash=row.arguments_hash,
+        status=row.status,
+        risk_level=row.risk_level,
+        approval_id=row.approval_id,
+        started_at=row.started_at,
+        finished_at=row.finished_at,
+        result_summary=row.result_summary,
+    )
+
+
+class ToolExecutionRepository:
+    """Tool calls are stored and read with an explicit tenant scope."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def insert(self, record: ToolExecutionRecord) -> None:
+        require_tenant_id(record.tenant_id)
+        ConversationRepository(self._session).require(record.tenant_id, record.conversation_id)
+        self._session.add(
+            ToolExecutionRow(
+                id=record.id,
+                tenant_id=record.tenant_id,
+                conversation_id=record.conversation_id,
+                correlation_id=record.correlation_id,
+                assistant_message_id=record.assistant_message_id,
+                tool_name=record.tool_name,
+                arguments_hash=record.arguments_hash,
+                status=record.status,
+                risk_level=record.risk_level,
+                approval_id=record.approval_id,
+                started_at=record.started_at,
+                finished_at=record.finished_at,
+                result_summary=record.result_summary,
+            )
+        )
+
+    def attach_message(
+        self, tenant_id: UUID, execution_ids: list[UUID], message_id: UUID
+    ) -> None:
+        tenant_id = require_tenant_id(tenant_id)
+        if not execution_ids:
+            return
+        rows = self._session.scalars(
+            select(ToolExecutionRow).where(
+                ToolExecutionRow.tenant_id == tenant_id,
+                ToolExecutionRow.id.in_(execution_ids),
+            )
+        )
+        for row in rows:
+            row.assistant_message_id = message_id
+
+    def list_for_conversation(
+        self, tenant_id: UUID, conversation_id: UUID
+    ) -> list[ToolExecutionRecord]:
+        tenant_id = require_tenant_id(tenant_id)
+        ConversationRepository(self._session).require(tenant_id, conversation_id)
+        rows = self._session.scalars(
+            select(ToolExecutionRow)
+            .where(
+                ToolExecutionRow.tenant_id == tenant_id,
+                ToolExecutionRow.conversation_id == conversation_id,
+            )
+            .order_by(ToolExecutionRow.started_at, ToolExecutionRow.id)
+        )
+        return [_tool_execution(row) for row in rows]
 
 
 class AuditRepository:

@@ -16,7 +16,8 @@ from assistflow_contracts.agent import (
     TurnContext,
 )
 from assistflow_contracts.conversation import MessageRole
-from assistflow_conversations.repository import AgentTraceRepository
+from assistflow_conversations.repository import AgentTraceRepository, ToolExecutionRepository
+from assistflow_customers.errors import SupportError
 from assistflow_test_fixtures.agent_scripts import (
     ASK_FOR_ORDER_NUMBER,
     ORDER_NUMBER_RECEIVED,
@@ -188,6 +189,7 @@ def test_order_script_asks_for_a_number_and_does_not_state_a_date() -> None:
 
     numbered = _runner().run(_context("Where is ORD-10482?"))
     assert numbered.assistant_message == ORDER_NUMBER_RECEIVED
+    assert numbered.proposed_tool_calls[0].arguments["order_id"] == "ORD-10482"
     assert numbered.proposed_tool_calls[0].name == "get_order"
     assert "delivered" not in numbered.assistant_message.lower()
     assert "in transit" not in numbered.assistant_message.lower()
@@ -234,11 +236,20 @@ def test_enabled_assistant_stores_a_reply_and_a_trace(
 
     transcript = support_client.get(f"/conversations/{conversation_id}/messages", headers=headers)
     contents = [item["content"] for item in transcript.json()["items"]]
-    assert contents == ["Where is ORD-10482?", ORDER_NUMBER_RECEIVED]
+    assert contents[0] == "Where is ORD-10482?"
+    assert "DFW" in contents[1]
+    assert "2099-06-15" in contents[1]
+    assert "Newark" not in contents[1]
+    activity = transcript.json()["items"][1]["tool_activity"]
+    assert activity[0]["tool_name"] == "get_order"
+    assert activity[0]["status"] == "succeeded"
 
     with Session(support_engine) as session:
         traces = AgentTraceRepository(session).list_for_conversation(HARBOR, conversation_id)
         hidden = AgentTraceRepository(session).get(FIELDLINE, traces[0].id)
+        executions = ToolExecutionRepository(session).list_for_conversation(HARBOR, conversation_id)
+        with pytest.raises(SupportError):
+            ToolExecutionRepository(session).list_for_conversation(FIELDLINE, conversation_id)
         session.rollback()
 
     assert len(traces) == 1
@@ -251,6 +262,13 @@ def test_enabled_assistant_stores_a_reply_and_a_trace(
     assert "chain of thought" not in summaries.lower()
     assert "secret" not in summaries.lower()
     assert any(step.kind == "tool_proposal" for step in traces[0].steps)
+    assert len(executions) == 1
+    assert executions[0].tool_name == "get_order"
+    assert executions[0].status == "succeeded"
+    assert executions[0].risk_level == "tier0"
+    assert executions[0].correlation_id == "corr-agent-route"
+    assert len(executions[0].arguments_hash) == 64
+    assert "password" not in executions[0].result_summary
 
 
 def test_default_api_import_does_not_load_cloud_sdks() -> None:

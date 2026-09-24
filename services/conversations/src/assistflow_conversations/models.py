@@ -107,3 +107,34 @@ class AgentTraceStepRow(Base):
     kind: Mapped[str] = mapped_column(String(32))
     latency_ms: Mapped[int] = mapped_column(Integer)
     input_summary: Mapped[str] = mapped_column(String(240))
+
+
+class ToolExecutionRow(Base):
+    """One authorized tool call. The summary is a safe projection, not a raw payload."""
+
+    __tablename__ = "tool_executions"
+    __table_args__ = (
+        Index(
+            "ix_tool_executions_tenant_conversation",
+            "tenant_id",
+            "conversation_id",
+            "started_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    conversation_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("conversations.id"))
+    correlation_id: Mapped[str] = mapped_column(String(200))
+    assistant_message_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("messages.id"), nullable=True
+    )
+    tool_name: Mapped[str] = mapped_column(String(80))
+    arguments_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32))
+    risk_level: Mapped[str] = mapped_column(String(16))
+    approval_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    result_summary: Mapped[str] = mapped_column(String(240))

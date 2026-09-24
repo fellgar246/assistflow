@@ -14,6 +14,7 @@ from assistflow_contracts.conversation import (
     CustomerMessageCreate,
     Message,
     MessagePage,
+    MessageRole,
     OpenConversation,
 )
 from assistflow_contracts.support import Problem
@@ -35,7 +36,7 @@ from assistflow_api.actor import LOCAL_ACTORS, Actor, LocalActorList, require_ac
 from assistflow_api.agents import build_agent_runner
 from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
-from assistflow_api.turns import complete_agent_turn
+from assistflow_api.turns import complete_agent_turn, tool_activity_for
 
 router = APIRouter()
 
@@ -196,6 +197,7 @@ def post_customer_message(
                 body.idempotency_key,
                 _context(actor, correlation),
                 runner,
+                max_tool_calls=settings.max_tool_calls_per_turn,
             )
     if result.replayed:
         response.status_code = 200
@@ -225,11 +227,19 @@ def read_transcript(
         cursor=page.cursor,
         limit=page.limit,
     )
+    activity = tool_activity_for(session, actor.tenant_id, conversation_id)
     _stamp(response, correlation)
+    visible = [item for item in listed.items if item.role is not MessageRole.TOOL]
     return MessagePage(
         items=[
-            Message(id=item.id, role=item.role, content=item.content, created_at=item.created_at)
-            for item in listed.items
+            Message(
+                id=item.id,
+                role=item.role,
+                content=item.content,
+                created_at=item.created_at,
+                tool_activity=activity.get(item.id, []),
+            )
+            for item in visible
         ],
         next_cursor=listed.next_cursor,
     )

@@ -35,6 +35,7 @@ def test_support_migration_applies_and_downgrades(
         "audit_events",
         "agent_traces",
         "agent_trace_steps",
+        "tool_executions",
     } <= names
     columns = {column["name"] for column in inspect(engine).get_columns("orders")}
     assert "tenant_id" in columns
