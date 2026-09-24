@@ -212,6 +212,40 @@ class MessageRepository:
         )
         return [_message(row) for row in self._session.scalars(statement)]
 
+    def has_role(self, tenant_id: UUID, conversation_id: UUID, role: MessageRole) -> bool:
+        """True when this conversation already has a message with the given role."""
+        ConversationRepository(self._session).require(tenant_id, conversation_id)
+        found = self._session.scalar(
+            select(MessageRow.id)
+            .where(
+                MessageRow.conversation_id == conversation_id,
+                MessageRow.role == role.value,
+            )
+            .limit(1)
+        )
+        return found is not None
+
+    def first_customer_contents(
+        self, tenant_id: UUID, conversation_ids: list[UUID]
+    ) -> dict[UUID, str]:
+        """Earliest customer text for each conversation, used as the list title."""
+        require_tenant_id(tenant_id)
+        if not conversation_ids:
+            return {}
+        rows = self._session.scalars(
+            select(MessageRow)
+            .where(
+                MessageRow.conversation_id.in_(conversation_ids),
+                MessageRow.role == MessageRole.CUSTOMER.value,
+            )
+            .order_by(MessageRow.created_at, MessageRow.id)
+        )
+        found: dict[UUID, str] = {}
+        for row in rows:
+            if row.conversation_id not in found:
+                found[row.conversation_id] = row.content
+        return found
+
     def insert(self, tenant_id: UUID, record: MessageRecord) -> None:
         ConversationRepository(self._session).require(tenant_id, record.conversation_id)
         self._session.add(

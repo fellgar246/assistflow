@@ -5,6 +5,7 @@ from uuid import UUID
 from assistflow_contracts.conversation import ConversationStatus, MessageRole
 from assistflow_conversations.audit import audit_payload
 from assistflow_conversations.commands import (
+    ACKNOWLEDGEMENT,
     ActorContext,
     append_message,
     change_conversation_status,
@@ -102,11 +103,18 @@ def test_conversation_is_stored_and_replayed_in_order(
     second = support_client.get(f"/conversations/{conversation_id}/messages", headers=headers)
     assert first.status_code == 200
     assert first.json() == second.json()
-    assert [item["role"] for item in first.json()["items"]] == ["customer", "assistant"]
+    assert [item["role"] for item in first.json()["items"]] == [
+        "customer",
+        "assistant",
+        "assistant",
+    ]
     assert [item["content"] for item in first.json()["items"]] == [
         "Where is my order?",
+        ACKNOWLEDGEMENT,
         "It is in transit from DFW.",
     ]
+    assert first.json()["items"][0]["citations"] == []
+    assert first.json()["items"][0]["tool_activity"] == []
 
     listed = support_client.get("/conversations", headers=headers)
     assert listed.status_code == 200
@@ -172,6 +180,56 @@ def test_ticket_links_to_the_conversation_inside_the_tenant(
     assert "ticket.created" in actions
     assert all(event.correlation_id == CORRELATION for event in events)
     assert all("token" not in event.payload for event in events)
+
+
+def test_acknowledgement_is_stored_once_and_states_no_order_fact(
+    support_client: TestClient,
+) -> None:
+    headers = _headers(HARBOR, HARBOR_CUSTOMER)
+    created = support_client.post(
+        "/conversations",
+        headers=headers,
+        json={"idempotency_key": "conv-ack"},
+    )
+    conversation_id = created.json()["id"]
+    support_client.post(
+        f"/conversations/{conversation_id}/messages",
+        headers=headers,
+        json={"content": "Can you help?", "idempotency_key": "msg-ack-1"},
+    )
+    support_client.post(
+        f"/conversations/{conversation_id}/messages",
+        headers=headers,
+        json={"content": "Still there?", "idempotency_key": "msg-ack-2"},
+    )
+    transcript = support_client.get(
+        f"/conversations/{conversation_id}/messages",
+        headers=headers,
+    )
+    contents = [item["content"] for item in transcript.json()["items"]]
+    assert contents == ["Can you help?", ACKNOWLEDGEMENT, "Still there?"]
+    lowered = ACKNOWLEDGEMENT.lower()
+    assert "not looked up an order" in lowered
+    assert "ord-" not in lowered
+    assert "in transit" not in lowered
+    assert "delivered" not in lowered
+
+
+def test_local_actor_list_is_hidden_outside_local_mode(support_engine: Engine) -> None:
+    from assistflow_api.config import load_settings
+    from assistflow_api.main import create_app
+
+    local = create_app(load_settings({}), engine=support_engine)
+    with TestClient(local) as client:
+        listed = client.get("/dev/actors")
+    assert listed.status_code == 200
+    labels = [item["label"] for item in listed.json()["actors"]]
+    assert labels == ["Ava Chen", "Ben Ortiz"]
+
+    remote = create_app(load_settings({"EXECUTION_MODE": "aws-demo"}), engine=support_engine)
+    with TestClient(remote) as client:
+        hidden = client.get("/dev/actors")
+    assert hidden.status_code == 404
 
 
 def test_status_change_and_audit_share_one_transaction(support_engine: Engine) -> None:

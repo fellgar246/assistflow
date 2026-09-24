@@ -36,6 +36,7 @@ npm --prefix apps/web run dev
 
 - API health: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
 - Web home: [http://127.0.0.1:3000](http://127.0.0.1:3000)
+- Customer chat: [http://127.0.0.1:3000/chat](http://127.0.0.1:3000/chat)
 
 The home page does not call a model. The API does not load a cloud SDK while AWS is disabled.
 
@@ -79,7 +80,9 @@ Support reads:
 | POST | `/conversations/{conversation_id}/messages` |
 | GET | `/conversations/{conversation_id}/messages` |
 
-`POST /conversations/{conversation_id}/messages` stores the customer text only. It does not generate a reply. `POST /tickets` may include `conversation_id` when the conversation is open in the same tenant.
+`POST /conversations/{conversation_id}/messages` stores the customer text and, when the thread has no assistant message yet, one fixed acknowledgement. That acknowledgement does not call a model and does not state an order fact. `GET /conversations/{conversation_id}` returns one conversation for the current customer. `POST /tickets` may include `conversation_id` when the conversation is open in the same tenant.
+
+While `EXECUTION_MODE=local`, `GET /dev/actors` lists the seeded customers the chat can act as. The chat shows that choice in a control marked "Development only". It is a named customer, not a tenant id field, and the route is not available in other execution modes. The web app proxies `/api/*` to the API.
 
 List routes take `limit` (default 20, maximum 100) and an opaque `cursor`. The generated API document is at [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json).
 

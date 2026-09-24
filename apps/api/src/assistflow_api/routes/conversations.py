@@ -24,10 +24,11 @@ from assistflow_conversations.repository import (
     MessageRepository,
 )
 from assistflow_customers.errors import SupportError
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
-from assistflow_api.actor import Actor, require_actor
+from assistflow_api.actor import LOCAL_ACTORS, Actor, LocalActorList, require_actor
+from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
 
 router = APIRouter()
@@ -57,7 +58,7 @@ def _context(actor: Actor, correlation: str) -> ActorContext:
     )
 
 
-def _conversation(record: ConversationRecord) -> Conversation:
+def _conversation(record: ConversationRecord, preview: str | None = None) -> Conversation:
     return Conversation(
         id=record.id,
         customer_id=record.customer_id,
@@ -65,7 +66,17 @@ def _conversation(record: ConversationRecord) -> Conversation:
         status=record.status,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        preview=preview,
     )
+
+
+@router.get("/dev/actors", response_model=LocalActorList, responses=_ERRORS)
+def list_local_actors(request: Request) -> LocalActorList:
+    """Seeded customers for local development. Hidden once a real session exists."""
+    settings = request.app.state.settings
+    if not isinstance(settings, Settings) or settings.execution_mode is not ExecutionMode.LOCAL:
+        raise SupportError("not_found", "This resource was not found.", 404)
+    return LocalActorList(actors=list(LOCAL_ACTORS))
 
 
 @router.post("/conversations", response_model=Conversation, status_code=201, responses=_ERRORS)
@@ -97,17 +108,46 @@ def list_conversations(
     page: Page,
     correlation: Correlation,
 ) -> ConversationPage:
-    listed = ConversationRepository(session).list_for_customer(
+    repository = ConversationRepository(session)
+    listed = repository.list_for_customer(
         actor.tenant_id,
         actor.customer_id,
         cursor=page.cursor,
         limit=page.limit,
     )
+    previews = MessageRepository(session).first_customer_contents(
+        actor.tenant_id,
+        [item.id for item in listed.items],
+    )
     _stamp(response, correlation)
     return ConversationPage(
-        items=[_conversation(item) for item in listed.items],
+        items=[_conversation(item, previews.get(item.id)) for item in listed.items],
         next_cursor=listed.next_cursor,
     )
+
+
+@router.get(
+    "/conversations/{conversation_id}",
+    response_model=Conversation,
+    responses=_ERRORS,
+)
+def read_conversation(
+    conversation_id: UUID,
+    response: Response,
+    actor: DevActor,
+    session: Db,
+    correlation: Correlation,
+) -> Conversation:
+    record = ConversationRepository(session).require_for_customer(
+        actor.tenant_id, actor.customer_id, conversation_id
+    )
+    preview = (
+        MessageRepository(session)
+        .first_customer_contents(actor.tenant_id, [conversation_id])
+        .get(conversation_id)
+    )
+    _stamp(response, correlation)
+    return _conversation(record, preview)
 
 
 @router.post(

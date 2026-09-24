@@ -13,6 +13,7 @@ describe("home page", () => {
     expect(
       screen.getByText("Customer support, running on this machine."),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open chat" })).toHaveAttribute("href", "/chat");
     expect(fetchMock).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();

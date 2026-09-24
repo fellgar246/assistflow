@@ -13,6 +13,39 @@ from fastapi import Header
 from pydantic import BaseModel, ConfigDict
 
 
+class LocalActorOption(BaseModel):
+    """A seeded customer the local UI can act as. Labels are for display."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    organization: str
+    tenant_id: UUID
+    customer_id: UUID
+
+
+class LocalActorList(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    actors: list[LocalActorOption]
+
+
+LOCAL_ACTORS: tuple[LocalActorOption, ...] = (
+    LocalActorOption(
+        label="Ava Chen",
+        organization="Harbor Goods",
+        tenant_id=UUID("11111111-1111-4111-8111-111111111111"),
+        customer_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001"),
+    ),
+    LocalActorOption(
+        label="Ben Ortiz",
+        organization="Fieldline Supply",
+        tenant_id=UUID("22222222-2222-4222-8222-222222222222"),
+        customer_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002"),
+    ),
+)
+
+
 class Actor(BaseModel):
     """Server-side caller. Routes use this object instead of body-supplied identity."""
 

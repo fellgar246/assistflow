@@ -1,5 +1,67 @@
 @import "tailwindcss";
 
+:root {
+  --af-bg: #fafafa;
+  --af-surface: #ffffff;
+  --af-surface-subtle: #f4f4f5;
+  --af-border: #e4e4e7;
+  --af-border-strong: #d4d4d8;
+  --af-text: #18181b;
+  --af-muted: #52525b;
+  --af-subtle: #71717a;
+  --af-accent: #4f46e5;
+  --af-accent-hover: #4338ca;
+  --af-accent-soft: #eef2ff;
+  --af-success: #047857;
+  --af-success-soft: #ecfdf5;
+  --af-warning: #b45309;
+  --af-warning-soft: #fffbeb;
+  --af-danger: #be123c;
+  --af-danger-soft: #fff1f2;
+  --af-info: #0369a1;
+  --af-info-soft: #f0f9ff;
+  --af-human: #6d28d9;
+  --af-human-soft: #f5f3ff;
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-bg: var(--af-bg);
+  --color-surface: var(--af-surface);
+  --color-surface-subtle: var(--af-surface-subtle);
+  --color-default: var(--af-border);
+  --color-strong: var(--af-border-strong);
+  --color-text: var(--af-text);
+  --color-muted: var(--af-muted);
+  --color-subtle: var(--af-subtle);
+  --color-accent: var(--af-accent);
+  --color-accent-hover: var(--af-accent-hover);
+  --color-accent-soft: var(--af-accent-soft);
+  --color-success: var(--af-success);
+  --color-success-soft: var(--af-success-soft);
+  --color-warning: var(--af-warning);
+  --color-warning-soft: var(--af-warning-soft);
+  --color-danger: var(--af-danger);
+  --color-danger-soft: var(--af-danger-soft);
+  --color-info: var(--af-info);
+  --color-info-soft: var(--af-info-soft);
+  --color-human: var(--af-human);
+  --color-human-soft: var(--af-human-soft);
+}
+
 body {
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  background: var(--af-bg);
+  color: var(--af-text);
+  font-family: var(--font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

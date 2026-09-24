@@ -34,6 +34,11 @@ from assistflow_conversations.status import transition_status
 _OPEN = "open_conversation"
 _APPEND = "append_message"
 
+# Fixed stored reply. It does not call a model and does not state an order fact.
+ACKNOWLEDGEMENT = (
+    "Thanks, I saved your message. I have not looked up an order, delivery, return, or refund."
+)
+
 
 @dataclass(frozen=True)
 class ActorContext:
@@ -121,8 +126,11 @@ def append_customer_message(
     idempotency_key: str,
     actor: ActorContext,
 ) -> MessageWrite:
-    """Store a customer message. This does not call a model."""
-    return append_message(
+    """Store a customer message and, when needed, one fixed acknowledgement.
+
+    The acknowledgement is stored text. This function does not call a model.
+    """
+    written = append_message(
         session,
         tenant_id,
         customer_id,
@@ -132,6 +140,21 @@ def append_customer_message(
         idempotency_key,
         actor,
     )
+    if written.replayed:
+        return written
+    messages = MessageRepository(session)
+    if not messages.has_role(tenant_id, conversation_id, MessageRole.ASSISTANT):
+        append_message(
+            session,
+            tenant_id,
+            customer_id,
+            conversation_id,
+            MessageRole.ASSISTANT,
+            ACKNOWLEDGEMENT,
+            f"acknowledgement:{idempotency_key}",
+            actor,
+        )
+    return written
 
 
 def append_message(

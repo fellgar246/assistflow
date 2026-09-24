@@ -35,6 +35,7 @@ class Conversation(BaseModel):
     status: ConversationStatus
     created_at: JsonDateTime
     updated_at: JsonDateTime
+    preview: str | None = None
 
 
 class ConversationPage(BaseModel):
@@ -44,6 +45,34 @@ class ConversationPage(BaseModel):
     next_cursor: str | None
 
 
+class Citation(BaseModel):
+    """A document the answer used. The title is what the customer sees."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str = Field(min_length=1, max_length=200)
+    version: str | None = Field(default=None, max_length=40)
+
+
+class ToolActivityStatus(StrEnum):
+    PROPOSED = "proposed"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    PENDING_APPROVAL = "pending_approval"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+
+
+class ToolActivity(BaseModel):
+    """A finished or in-progress check. Arguments stay off this payload."""
+
+    model_config = ConfigDict(frozen=True)
+
+    tool_name: str = Field(min_length=1, max_length=80)
+    status: ToolActivityStatus
+    reason: str | None = Field(default=None, max_length=240)
+
+
 class Message(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -51,6 +80,8 @@ class Message(BaseModel):
     role: MessageRole
     content: str
     created_at: JsonDateTime
+    citations: list[Citation] = Field(default_factory=list)
+    tool_activity: list[ToolActivity] = Field(default_factory=list)
 
 
 class MessagePage(BaseModel):
