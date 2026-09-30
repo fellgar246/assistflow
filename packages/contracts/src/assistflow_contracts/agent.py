@@ -65,6 +65,7 @@ class TurnContext(BaseModel):
     customer_message: str = Field(min_length=1)
     history: list[HistoryMessage]
     prompt: PromptRef
+    actor_type: str = Field(default="customer", min_length=1, max_length=32)
 
 
 class ProposedToolCall(BaseModel):

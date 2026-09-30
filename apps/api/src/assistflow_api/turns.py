@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 from uuid import UUID, uuid4
 
 from assistflow_contracts.agent import (
@@ -11,7 +10,6 @@ from assistflow_contracts.agent import (
     ExecutedTool,
     HistoryMessage,
     PromptRef,
-    ToolSchema,
     TurnContext,
 )
 from assistflow_contracts.conversation import MessageRole, ToolActivity, ToolActivityStatus
@@ -31,17 +29,17 @@ from assistflow_conversations.repository import (
 from sqlalchemy.orm import Session
 
 from assistflow_api.agents import TurnRunner
+from assistflow_api.config import Settings
+from assistflow_api.retrieval import build_knowledge_retriever
 from assistflow_knowledge.embeddings import DeterministicEmbedding
-from assistflow_knowledge.retriever import KnowledgeRetriever
+from assistflow_knowledge.retriever import KnowledgeRetriever, LocalKnowledgeRetriever
 from assistflow_runtime import (
     DEFAULT_PROMPT_ID,
     DEFAULT_PROMPT_VERSION,
     bound_history,
 )
 from assistflow_tools import (
-    ToolContext,
-    ToolOutcome,
-    ToolRegistry,
+    LocalToolGateway,
     build_registry,
     service_handlers,
 )
@@ -61,20 +59,19 @@ def complete_agent_turn(
     max_tool_calls: int = 5,
     max_chunks: int = 4,
     score_floor: float = 0.28,
+    settings: Settings | None = None,
+    retriever: KnowledgeRetriever | None = None,
 ) -> AgentResult:
     """Ask the runner for a reply, run tier-0 tools, and persist the answer."""
     history = _history(session, tenant_id, conversation_id, customer_message_id)
     bound = runner.bind(
         build_turn_gateway(
             session,
-            tenant_id=tenant_id,
-            customer_id=customer_id,
-            conversation_id=conversation_id,
-            actor_type=actor.actor_type,
-            correlation_id=actor.correlation_id,
             max_tool_calls=max_tool_calls,
             max_chunks=max_chunks,
             score_floor=score_floor,
+            settings=settings,
+            retriever=retriever,
         )
     )
     result = bound.run(
@@ -86,6 +83,7 @@ def complete_agent_turn(
             customer_message=customer_message,
             history=history,
             prompt=PromptRef(id=DEFAULT_PROMPT_ID, version=DEFAULT_PROMPT_VERSION),
+            actor_type=actor.actor_type,
         )
     )
     executions = _store_handled(
@@ -153,38 +151,26 @@ def complete_agent_turn(
 def build_turn_gateway(
     session: Session,
     *,
-    tenant_id: UUID,
-    customer_id: UUID,
-    conversation_id: UUID,
-    actor_type: str,
-    correlation_id: str,
     max_tool_calls: int,
     max_chunks: int,
     score_floor: float,
-) -> _RegistryGateway:
-    """Bind the shared tool registry for one tenant. The model does not choose the tenant."""
-    registry = build_registry(
-        service_handlers(
-            session,
-            retriever=KnowledgeRetriever(
+    settings: Settings | None = None,
+    retriever: KnowledgeRetriever | None = None,
+) -> LocalToolGateway:
+    """Bind the local read gateway. The turn supplies the tenant when a tool is called."""
+    if retriever is None:
+        retriever = (
+            build_knowledge_retriever(settings, session)
+            if settings is not None
+            else LocalKnowledgeRetriever(
                 session,
                 DeterministicEmbedding(),
                 chunk_cap=max_chunks,
                 score_floor=score_floor,
-            ),
+            )
         )
-    )
-    return _RegistryGateway(
-        registry,
-        ToolContext(
-            tenant_id=tenant_id,
-            customer_id=customer_id,
-            actor_type=actor_type,
-            correlation_id=correlation_id,
-            conversation_id=conversation_id,
-        ),
-        max_tool_calls,
-    )
+    registry = build_registry(service_handlers(session, retriever=retriever))
+    return LocalToolGateway(registry, max_executions=max_tool_calls)
 
 
 def tool_activity_for(
@@ -228,63 +214,6 @@ def _store_handled(
             )
         )
     return stored
-
-
-class _RegistryGateway:
-    """Advertise allowlisted schemas and run only tier-0 tools."""
-
-    def __init__(self, registry: ToolRegistry, context: ToolContext, max_executions: int) -> None:
-        self._registry = registry
-        self._context = context
-        self._max_executions = max_executions
-        self._used = 0
-
-    def schemas(self) -> list[ToolSchema]:
-        advertised: list[ToolSchema] = []
-        for tool in self._registry.advertised():
-            description = (tool.argument_model.__doc__ or tool.name).strip().splitlines()[0]
-            advertised.append(
-                ToolSchema(
-                    name=tool.name,
-                    description=description[:400],
-                    input_schema=tool.json_schema(),
-                )
-            )
-        return advertised
-
-    def execute(self, name: str, arguments: dict[str, Any]) -> ExecutedTool:
-        registered = self._registry.lookup(name)
-        if registered is None or registered.risk_level.value != "tier0":
-            return ExecutedTool(
-                name=name,
-                status="blocked",
-                error_code="tool_denied",
-                summary="That action is not available.",
-                body=None,
-                risk_level="tier3",
-                arguments_hash="",
-            )
-        outcome = self._registry.execute(
-            name,
-            arguments,
-            self._context,
-            executions_used=self._used,
-            max_executions=self._max_executions,
-        )
-        self._used += 1
-        return _executed(outcome)
-
-
-def _executed(outcome: ToolOutcome) -> ExecutedTool:
-    return ExecutedTool(
-        name=outcome.name,
-        status=outcome.status.value,
-        error_code=outcome.error_code,
-        summary=outcome.summary,
-        body=outcome.body,
-        risk_level=outcome.risk_level.value,
-        arguments_hash=outcome.arguments_hash,
-    )
 
 
 def _store_outcome(

@@ -55,3 +55,30 @@ module "agentcore" {
   enabled             = var.enable_agentcore
   container_image_uri = var.agentcore_container_image_uri
 }
+
+module "agentcore_gateway" {
+  source = "../../modules/agentcore_gateway"
+
+  enabled              = var.enable_agentcore
+  runtime_role_name    = module.agentcore.runtime_role_name
+  tool_package_path    = var.agentcore_tool_package_path
+  tool_package_hash    = var.agentcore_tool_package_hash
+  inbound_token        = var.agentcore_gateway_inbound_token
+  actor_context_secret = var.agentcore_actor_context_secret
+  database_url         = var.agentcore_tool_database_url
+}
+
+module "knowledge_bucket" {
+  source = "../../modules/knowledge_bucket"
+
+  enabled = var.enable_knowledge_bucket || var.enable_managed_rag
+  tags    = local.required_tags
+}
+
+module "managed_rag" {
+  source = "../../modules/managed_rag"
+
+  enabled    = var.enable_managed_rag
+  bucket_arn = module.knowledge_bucket.bucket_arn
+  tags       = local.required_tags
+}

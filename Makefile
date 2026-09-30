@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore
+.PHONY: lint typecheck test up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore smoke-gateway sync-knowledge
 
 PYTHON_PATHS := src tests \
 	../../services/conversations/src \
@@ -65,3 +65,9 @@ deploy-agentcore:
 
 smoke-agentcore:
 	$(UV) run --directory apps/api python ../../scripts/smoke_agentcore.py
+
+smoke-gateway:
+	$(UV) run --directory apps/api python ../../scripts/smoke_gateway.py
+
+sync-knowledge:
+	$(UV) run --directory apps/api python -m assistflow_api.sync_knowledge

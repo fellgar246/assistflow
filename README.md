@@ -88,7 +88,11 @@ List routes take `limit` (default 20, maximum 100) and an opaque `cursor`. The g
 
 Stop the database with `make down`.
 
-`LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, managed-retrieval, and long-term-memory flags off, even if other variables request them. Credentials are read from the environment only. Do not commit a filled `.env` file.
+`LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, managed-retrieval, and long-term-memory flags off, and it forces retrieval back to the local index even if `RAG_PROVIDER` names an AWS provider. Credentials are read from the environment only. Do not commit a filled `.env` file.
+
+## Retrieval
+
+Policy answers use one retriever port. The default provider is the local index. `RAG_PROVIDER=s3` scores the same product files after `make sync-knowledge` uploads them to `KNOWLEDGE_BUCKET`. Keys always include the tenant id. `RAG_PROVIDER=managed` calls a knowledge base only when `MANAGED_RAG_ENABLED=true`, and startup fails unless a metadata filter or a base per tenant is set. The assistant loop does not choose the provider. A normal Terraform apply leaves the document bucket and the knowledge base uncreated. Revalidate current retrieval prices before you apply either module. This repository does not embed a provider price.
 
 ## Hosted agent runtime
 
@@ -112,6 +116,30 @@ Smoke compares seeded order facts (status, hub, estimated delivery date, and the
 make smoke-agentcore
 ```
 
+## Hosted tool gateway
+
+Business reads from the hosted agent go through a tool gateway. The local profile uses an in-process gateway and does not call that endpoint.
+
+The gateway is created only when `enable_agentcore` is true. A normal apply leaves it off. Revalidate current AgentCore gateway pricing before you apply. This repository does not embed a provider price.
+
+`make deploy-agentcore` packages the read-tool function and applies it with the runtime. Set these only in the environment, not in a committed file:
+
+```text
+GATEWAY_INBOUND_TOKEN
+AGENTCORE_ACTOR_CONTEXT_SECRET
+DATABASE_URL
+```
+
+The runtime authenticates to the gateway with IAM. The gateway calls the tool function with its own role, limited to that function. The tenant id is a signed context from the server session. The model cannot supply it as a tool argument.
+
+Smoke calls `tools/list` and `tools/call` for the seeded order. It skips when `AGENTCORE_GATEWAY_URL`, the actor-context secret, or credentials are missing:
+
+```bash
+make smoke-gateway
+```
+
+Pull-request checks do not run either smoke command.
+
 ## Quality gates
 
 ```bash
@@ -128,6 +156,7 @@ make test
 | `up` / `down` | PostgreSQL via Docker Compose |
 | `deploy-agentcore` | Operator-only hosted runtime package and apply |
 | `smoke-agentcore` | Operator-only hosted order-fact check; skips without credentials |
+| `smoke-gateway` | Operator-only hosted tools/list and tools/call; skips without credentials |
 
 Browser tests are scaffolded with Playwright and are not part of `make test`. Install browsers first, then run `npm --prefix apps/web run test:e2e`.
 

@@ -28,7 +28,7 @@ from assistflow_api.turns import complete_agent_turn
 from assistflow_knowledge.embeddings import DeterministicEmbedding
 from assistflow_knowledge.ingest import ingest_text, retire_document
 from assistflow_knowledge.models import KnowledgeDocumentRow
-from assistflow_knowledge.retriever import KnowledgeRetriever
+from assistflow_knowledge.retriever import LocalKnowledgeRetriever
 from assistflow_runtime.limits import TurnLimits
 from assistflow_runtime.loop import ABSTAIN_MESSAGE, AgentLoop
 from assistflow_runtime.prompts import PromptRegistry
@@ -44,8 +44,8 @@ WRITE_TOOLS = {
 }
 
 
-def _retriever(session: Session, *, floor: float = 0.28) -> KnowledgeRetriever:
-    return KnowledgeRetriever(session, DeterministicEmbedding(), score_floor=floor)
+def _retriever(session: Session, *, floor: float = 0.28) -> LocalKnowledgeRetriever:
+    return LocalKnowledgeRetriever(session, DeterministicEmbedding(), score_floor=floor)
 
 
 def _cases() -> dict[str, object]:
@@ -294,7 +294,7 @@ def test_untrusted_document_text_does_not_execute_a_write(support_engine: Engine
         executed_names: list[str] = []
 
         class _Gateway:
-            def schemas(self) -> list[ToolSchema]:
+            def list_tools(self) -> list[ToolSchema]:
                 return [
                     ToolSchema(
                         name=tool.name,
@@ -310,8 +310,13 @@ def test_untrusted_document_text_does_not_execute_a_write(support_engine: Engine
                     )
                 ]
 
-            def execute(self, name: str, arguments: dict[str, object]) -> ExecutedTool:
-
+            def call_tool(
+                self,
+                name: str,
+                arguments: dict[str, object],
+                actor_context: object,
+            ) -> ExecutedTool:
+                del actor_context
                 executed_names.append(name)
                 if name == "create_refund_request":
                     return ExecutedTool(

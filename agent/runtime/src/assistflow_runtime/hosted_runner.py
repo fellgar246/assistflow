@@ -113,7 +113,7 @@ class AgentCoreRuntimeRunner:
         self._arn_configured = arn_configured
 
     def bind(self, gateway: object) -> AgentCoreRuntimeRunner:
-        """Tools run inside the hosted process. The local gateway is not a second path."""
+        """The hosted process calls the tool gateway. This process does not."""
         _ = gateway
         return self
 

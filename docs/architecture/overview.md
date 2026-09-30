@@ -15,7 +15,7 @@ AssistFlow separates a proposal from an authorized change. The model may suggest
 
 Model text does not mutate orders, shipments, refunds, addresses, or accounts. Retrieved policy prose does not authorize a write by itself.
 
-Tool calls cross a gateway boundary. Domain services do not accept a shortcut from prompt text or from a model SDK. A local gateway and a hosted gateway implement the same checks.
+Tool calls cross a gateway boundary. Domain services do not accept a shortcut from prompt text or from a model SDK. A local gateway and a hosted gateway implement the same checks. The local gateway is the default and does not open a network connection. The hosted gateway is created only when the hosted runtime is enabled. The runtime authenticates to it, and the gateway calls the read-tool function with its own role. The tenant id is signed by the application. The model cannot pass it as a trusted argument.
 
 ## Local by default
 
@@ -26,7 +26,9 @@ The default execution profile is local:
 - cloud adapters stay behind interfaces and are not imported while AWS is disabled;
 - the in-process assistant proposes tool calls, writes a trace, and does not import a hosted-model SDK.
 
-`LOCAL_ONLY_MODE=true` is a hard stop. It turns those hosted flags off even when the rest of the environment asks for them. The API still serves health checks.
+`LOCAL_ONLY_MODE=true` is a hard stop. It turns those hosted flags off and forces the local retrieval provider even when the rest of the environment asks for an AWS provider. The API still serves health checks.
+
+Retrieval uses one port. The local index is the default. An S3 provider scores the same published files after an operator syncs them into a private bucket. A managed knowledge base stays behind its own flag and requires a tenant metadata filter or a base per tenant. The turn loop does not construct either client.
 
 The same turn contract can run in-process or in a hosted runtime. The hosted path is off unless the operator enables it and deploys it with a separate command. Pull-request checks do not create that runtime. A hosted session id is the conversation id. The application reserves the daily session before the remote call.
 
@@ -39,5 +41,5 @@ Execution limits live in configuration, not in prompts. Exceeding a limit stops 
 - `apps/web` talks to the API over HTTP. It does not import agent SDKs or business services.
 - `apps/api` orchestrates use cases and depends on ports.
 - `services/` implement commerce and support rules. They do not import a model SDK.
-- `agent/` proposes actions through the tool registry. It does not write business tables directly.
+- `agent/` proposes actions through the tool gateway. It does not write business tables directly. The runtime package does not import commerce services.
 - `packages/contracts` holds shared schemas and performs no I/O.

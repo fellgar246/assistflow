@@ -11,7 +11,11 @@ from assistflow_tickets.repository import TicketRepository
 from sqlalchemy.orm import Session
 
 from assistflow_knowledge.embeddings import DeterministicEmbedding
-from assistflow_knowledge.retriever import DEFAULT_CHUNK_CAP, KnowledgeRetriever
+from assistflow_knowledge.retriever import (
+    DEFAULT_CHUNK_CAP,
+    KnowledgeRetriever,
+    LocalKnowledgeRetriever,
+)
 from assistflow_tools.models import (
     GetCustomerProfileArgs,
     GetOrderArgs,
@@ -42,7 +46,7 @@ def service_handlers(
     search = (
         retriever
         if retriever is not None
-        else KnowledgeRetriever(session, DeterministicEmbedding())
+        else LocalKnowledgeRetriever(session, DeterministicEmbedding())
     )
     return {
         "get_order": _order_handler(session, clock),

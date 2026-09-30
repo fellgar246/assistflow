@@ -12,7 +12,7 @@ The assistant has to be able to run on a developer machine and, when an operator
 
 `AgentRunner` stays the port. The API uses an in-process runner by default. When the hosted-agent flag is on, a runtime runner sends the turn to the hosted runtime and maps the response back.
 
-The hosted process boots the same loop and the same tool registry. It does not add a second authorization path. The runtime session id is the conversation id. It is never a customer email.
+The hosted process boots the same loop. Business reads go through the tool gateway. It does not add a second authorization path. The runtime session id is the conversation id. It is never a customer email.
 
 A hosted session is reserved before the remote call. A failed call does not return that slot. A transport error is retried once. An invocation that exceeds the configured timeout fails the turn and leaves the conversation usable.
 

@@ -1,7 +1,9 @@
-"""Boot one hosted turn on the shared loop and tool registry.
+"""Boot one hosted turn on the shared loop.
 
 The process entry reads a JSON turn from stdin and writes the packaged result.
-It does not add a second authorization path.
+When the hosted agent is enabled, reads leave through the tool gateway.
+Otherwise the local gateway is used. This module does not add a second
+authorization path.
 """
 
 import json
@@ -14,28 +16,35 @@ from sqlalchemy.orm import Session
 from assistflow_api.agents import InProcessAgentRunner, build_model_adapter
 from assistflow_api.config import Settings, load_settings
 from assistflow_api.db import create_db_engine
-from assistflow_api.turns import build_turn_gateway
 from assistflow_runtime.handler import invoke_turn
 
 
 def run_payload(session: Session, settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
-    """Run the turn with the same loop and tenant-scoped tools as the API."""
+    """Run the turn. Hosted reads use the gateway client. Local reads stay in process."""
     turn = TurnContext.model_validate(payload["turn"])
     runner = InProcessAgentRunner(settings, build_model_adapter(settings))
-    loop = runner.build_loop(
-        build_turn_gateway(
-            session,
-            tenant_id=turn.tenant_id,
-            customer_id=turn.customer_id,
-            conversation_id=turn.conversation_id,
-            actor_type="customer",
-            correlation_id=turn.correlation_id,
-            max_tool_calls=settings.max_tool_calls_per_turn,
-            max_chunks=settings.max_chunks_per_retrieval,
-            score_floor=settings.retrieval_score_floor,
-        )
-    )
+    loop = runner.build_loop(_gateway_for(session, settings, turn))
     return invoke_turn(payload, loop)
+
+
+def _gateway_for(session: Session, settings: Settings, turn: TurnContext) -> Any:
+    if settings.agentcore_enabled:
+        from assistflow_runtime.gateway import build_agentcore_gateway
+
+        return build_agentcore_gateway(
+            url=settings.agentcore_gateway_url,
+            token=settings.agentcore_gateway_token,
+            secret=settings.agentcore_actor_context_secret,
+        )
+    from assistflow_api.turns import build_turn_gateway
+
+    return build_turn_gateway(
+        session,
+        max_tool_calls=settings.max_tool_calls_per_turn,
+        max_chunks=settings.max_chunks_per_retrieval,
+        score_floor=settings.retrieval_score_floor,
+        settings=settings,
+    )
 
 
 def main() -> None:

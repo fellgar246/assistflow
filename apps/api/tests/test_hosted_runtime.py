@@ -77,13 +77,9 @@ def _turn(
 
 
 def _gateway(session: Session, turn: TurnContext, settings: Settings) -> Any:
+    del turn
     return build_turn_gateway(
         session,
-        tenant_id=turn.tenant_id,
-        customer_id=turn.customer_id,
-        conversation_id=turn.conversation_id,
-        actor_type="customer",
-        correlation_id=turn.correlation_id,
         max_tool_calls=settings.max_tool_calls_per_turn,
         max_chunks=settings.max_chunks_per_retrieval,
         score_floor=settings.retrieval_score_floor,

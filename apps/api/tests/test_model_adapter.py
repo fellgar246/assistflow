@@ -17,9 +17,7 @@ from assistflow_contracts.agent import (
     ToolUseRequest,
     TurnContext,
 )
-from assistflow_test_fixtures.agent_scripts import follow_up_calls, select_script
-
-from assistflow_api.config import load_settings, repo_root
+from assistflow_runtime.gateway import ToolGateway
 from assistflow_runtime.history import estimate_tokens
 from assistflow_runtime.hosted_model import HostedModelAdapter
 from assistflow_runtime.limits import TurnLimits
@@ -27,10 +25,12 @@ from assistflow_runtime.loop import (
     OUTPUT_LIMIT_MESSAGE,
     RETRY_MESSAGE,
     AgentLoop,
-    ToolGateway,
 )
 from assistflow_runtime.mock_adapter import MockModelAdapter
 from assistflow_runtime.prompts import PromptRegistry
+from assistflow_test_fixtures.agent_scripts import follow_up_calls, select_script
+
+from assistflow_api.config import load_settings, repo_root
 
 ORDER_BODY = {
     "order_id": "ORD-10482",
@@ -52,7 +52,7 @@ class OrderGateway:
     def __init__(self) -> None:
         self.executed: list[str] = []
 
-    def schemas(self) -> list[ToolSchema]:
+    def list_tools(self) -> list[ToolSchema]:
         return [
             ToolSchema(
                 name="get_order",
@@ -61,7 +61,13 @@ class OrderGateway:
             )
         ]
 
-    def execute(self, name: str, arguments: dict[str, Any]) -> ExecutedTool:
+    def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        actor_context: object,
+    ) -> ExecutedTool:
+        del arguments, actor_context
         self.executed.append(name)
         return ExecutedTool(
             name=name,

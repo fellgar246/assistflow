@@ -52,6 +52,12 @@ variable "enable_managed_rag" {
   default     = false
 }
 
+variable "enable_knowledge_bucket" {
+  description = "Document bucket for application-owned retrieval. Disabled by default."
+  type        = bool
+  default     = false
+}
+
 variable "enable_schedules" {
   description = "Scheduled jobs. Disabled by default."
   type        = bool
@@ -62,4 +68,37 @@ variable "agentcore_container_image_uri" {
   description = "Image for the hosted runtime. Used only when enable_agentcore is true."
   type        = string
   default     = ""
+}
+
+variable "agentcore_tool_package_path" {
+  description = "Zip for the read-tool function. Required only when enable_agentcore is true."
+  type        = string
+  default     = ""
+}
+
+variable "agentcore_tool_package_hash" {
+  description = "Base64 SHA-256 of the tool package. Empty leaves the hash unset."
+  type        = string
+  default     = ""
+}
+
+variable "agentcore_gateway_inbound_token" {
+  description = "Credential the runtime presents to the tool function. Do not commit a value."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "agentcore_actor_context_secret" {
+  description = "Secret that signs the tenant context. Do not commit a value."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "agentcore_tool_database_url" {
+  description = "Database URL for the tool function. Do not commit a value."
+  type        = string
+  default     = ""
+  sensitive   = true
 }

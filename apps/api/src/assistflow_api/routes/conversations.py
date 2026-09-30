@@ -205,6 +205,7 @@ def post_customer_message(
                 max_tool_calls=settings.max_tool_calls_per_turn,
                 max_chunks=settings.max_chunks_per_retrieval,
                 score_floor=settings.retrieval_score_floor,
+                settings=settings,
             )
     if result.replayed:
         response.status_code = 200

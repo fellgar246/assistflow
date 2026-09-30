@@ -10,7 +10,7 @@ from assistflow_contracts import HealthStatus
 from fastapi import FastAPI
 from sqlalchemy.engine import Engine
 
-from assistflow_api.config import Settings, load_settings
+from assistflow_api.config import Settings, load_settings, validate_retrieval_settings
 from assistflow_api.db import create_db_engine
 from assistflow_api.http import register_error_handlers
 from assistflow_api.logging import configure_logging
@@ -24,6 +24,7 @@ logger = structlog.get_logger(__name__)
 
 def create_app(settings: Settings | None = None, engine: Engine | None = None) -> FastAPI:
     resolved = settings if settings is not None else load_settings()
+    validate_retrieval_settings(resolved)
     owns_engine = engine is None
     resolved_engine = create_db_engine(resolved.database_url) if engine is None else engine
 
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             agentcore_enabled=resolved.agentcore_enabled,
             bedrock_enabled=resolved.bedrock_enabled,
             managed_rag_enabled=resolved.managed_rag_enabled,
+            rag_provider=resolved.rag_provider.value,
             long_term_memory_enabled=resolved.long_term_memory_enabled,
             local_only_mode=resolved.local_only_mode,
         )

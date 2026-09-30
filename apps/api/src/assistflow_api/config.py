@@ -9,8 +9,9 @@ import os
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -26,6 +27,7 @@ class ExecutionMode(StrEnum):
 
 class RagProvider(StrEnum):
     LOCAL = "local"
+    S3 = "s3"
     MANAGED = "managed"
 
 
@@ -111,6 +113,14 @@ class Settings(BaseModel):
     max_memory_events_per_session: int = 30
     agentcore_runtime_arn: str = ""
     agentcore_invocation_timeout_seconds: float = 30.0
+    agentcore_gateway_url: str = ""
+    agentcore_gateway_token: str = ""
+    agentcore_actor_context_secret: str = ""
+    knowledge_bucket: str = ""
+    knowledge_key_prefix: str = "tenants/{tenant_id}/"
+    managed_knowledge_base_id: str = ""
+    managed_knowledge_bases: dict[str, str] = Field(default_factory=dict)
+    managed_rag_metadata_key: str = ""
 
 
 def repo_root() -> Path:
@@ -151,8 +161,13 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         bedrock_enabled = False
         managed_rag_enabled = False
         long_term_memory_enabled = False
-        if rag_provider is RagProvider.MANAGED:
-            rag_provider = RagProvider.LOCAL
+        rag_provider = RagProvider.LOCAL
+
+    knowledge_bucket = values.get("KNOWLEDGE_BUCKET", "").strip()
+    knowledge_key_prefix = values.get("KNOWLEDGE_KEY_PREFIX", "").strip() or "tenants/{tenant_id}/"
+    managed_knowledge_base_id = values.get("MANAGED_KNOWLEDGE_BASE_ID", "").strip()
+    managed_knowledge_bases = _knowledge_bases(values.get("MANAGED_KNOWLEDGE_BASES"))
+    managed_rag_metadata_key = values.get("MANAGED_RAG_METADATA_KEY", "").strip()
 
     database_url = values.get("DATABASE_URL", "").strip() or DEFAULT_DATABASE_URL
     model_provider = _model_provider(values.get("MODEL_PROVIDER"))
@@ -163,7 +178,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     )
     aws_region = values.get("AWS_REGION", "").strip() or "us-east-1"
     trace_debug = _optional_bool(values, "TRACE_DEBUG", False)
-    return Settings(
+    settings = Settings(
         execution_mode=mode,
         aws_enabled=aws_enabled,
         agentcore_enabled=agentcore_enabled,
@@ -199,7 +214,17 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         agentcore_invocation_timeout_seconds=_optional_float(
             values, "AGENTCORE_INVOCATION_TIMEOUT_SECONDS", 30.0
         ),
+        agentcore_gateway_url=values.get("AGENTCORE_GATEWAY_URL", "").strip(),
+        agentcore_gateway_token=values.get("AGENTCORE_GATEWAY_TOKEN", "").strip(),
+        agentcore_actor_context_secret=values.get("AGENTCORE_ACTOR_CONTEXT_SECRET", "").strip(),
+        knowledge_bucket=knowledge_bucket,
+        knowledge_key_prefix=knowledge_key_prefix,
+        managed_knowledge_base_id=managed_knowledge_base_id,
+        managed_knowledge_bases=managed_knowledge_bases,
+        managed_rag_metadata_key=managed_rag_metadata_key,
     )
+    validate_retrieval_settings(settings)
+    return settings
 
 
 def _execution_mode(raw: str | None) -> ExecutionMode:
@@ -226,7 +251,55 @@ def _rag_provider(raw: str | None, default: RagProvider) -> RagProvider:
     try:
         return RagProvider(raw.strip().lower())
     except ValueError as exc:
-        raise ValueError("Invalid RAG_PROVIDER. Expected local or managed.") from exc
+        raise ValueError("Invalid RAG_PROVIDER. Expected local, s3, or managed.") from exc
+
+
+def validate_retrieval_settings(settings: Settings) -> None:
+    """Reject an AWS retrieval provider that is missing its switch or its tenant filter."""
+    if settings.local_only_mode and settings.rag_provider is not RagProvider.LOCAL:
+        raise ValueError("LOCAL_ONLY_MODE forces the local retrieval provider.")
+    if settings.rag_provider is RagProvider.MANAGED and not settings.managed_rag_enabled:
+        raise ValueError("RAG_PROVIDER=managed requires MANAGED_RAG_ENABLED=true.")
+    if settings.rag_provider is RagProvider.S3:
+        if not settings.knowledge_bucket.strip():
+            raise ValueError("RAG_PROVIDER=s3 requires KNOWLEDGE_BUCKET.")
+        if "{tenant_id}" not in settings.knowledge_key_prefix:
+            raise ValueError("S3 retrieval requires a {tenant_id} prefix.")
+    if settings.rag_provider is RagProvider.MANAGED and not _managed_tenant_separation(settings):
+        raise ValueError(
+            "Managed retrieval requires a metadata filter or a knowledge base per tenant."
+        )
+
+
+def _managed_tenant_separation(settings: Settings) -> bool:
+    if settings.managed_knowledge_bases:
+        return True
+    return bool(settings.managed_knowledge_base_id.strip()) and bool(
+        settings.managed_rag_metadata_key.strip()
+    )
+
+
+def _knowledge_bases(raw: str | None) -> dict[str, str]:
+    if raw is None or raw.strip() == "":
+        return {}
+    parsed: dict[str, str] = {}
+    for part in raw.split(","):
+        piece = part.strip()
+        if piece == "":
+            continue
+        if "=" not in piece:
+            raise ValueError("MANAGED_KNOWLEDGE_BASES entries must be tenant_id=knowledge_base_id.")
+        tenant_raw, base = piece.split("=", 1)
+        try:
+            tenant_id = UUID(tenant_raw.strip())
+        except ValueError as exc:
+            raise ValueError(
+                "MANAGED_KNOWLEDGE_BASES entries must be tenant_id=knowledge_base_id."
+            ) from exc
+        if base.strip() == "":
+            raise ValueError("MANAGED_KNOWLEDGE_BASES entries must be tenant_id=knowledge_base_id.")
+        parsed[str(tenant_id)] = base.strip()
+    return parsed
 
 
 def _optional_bool(values: Mapping[str, str], name: str, default: bool) -> bool:

@@ -28,6 +28,14 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.max_sessions_per_day == 25
     assert settings.agentcore_runtime_arn == ""
     assert settings.agentcore_invocation_timeout_seconds == 30.0
+    assert settings.agentcore_gateway_url == ""
+    assert settings.agentcore_gateway_token == ""
+    assert settings.agentcore_actor_context_secret == ""
+    assert settings.knowledge_bucket == ""
+    assert settings.knowledge_key_prefix == "tenants/{tenant_id}/"
+    assert settings.managed_knowledge_base_id == ""
+    assert settings.managed_knowledge_bases == {}
+    assert settings.managed_rag_metadata_key == ""
 
 
 def test_aws_demo_profile_enables_hosted_agent_and_model_only() -> None:
@@ -76,3 +84,26 @@ def test_local_only_mode_forces_hosted_features_off() -> None:
 def test_invalid_execution_mode_is_rejected() -> None:
     with pytest.raises(ValueError, match="EXECUTION_MODE"):
         load_settings({"EXECUTION_MODE": "cloud"})
+
+
+def test_invalid_rag_provider_is_rejected() -> None:
+    with pytest.raises(ValueError, match="local, s3, or managed"):
+        load_settings({"RAG_PROVIDER": "pinecone"})
+
+
+def test_managed_provider_requires_the_flag() -> None:
+    with pytest.raises(ValueError, match="MANAGED_RAG_ENABLED"):
+        load_settings({"RAG_PROVIDER": "managed", "MANAGED_RAG_ENABLED": "false"})
+
+
+def test_local_only_mode_forces_s3_retrieval_back_to_local() -> None:
+    settings = load_settings(
+        {
+            "LOCAL_ONLY_MODE": "true",
+            "RAG_PROVIDER": "s3",
+            "KNOWLEDGE_BUCKET": "assistflow-knowledge",
+        }
+    )
+
+    assert settings.rag_provider is RagProvider.LOCAL
+    assert settings.aws_enabled is False

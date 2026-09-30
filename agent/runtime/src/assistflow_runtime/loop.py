@@ -27,7 +27,9 @@ from assistflow_contracts.agent import (
     Usage,
 )
 from assistflow_contracts.conversation import Citation
+from assistflow_contracts.gateway import GatewayActor
 
+from assistflow_runtime.gateway import ToolGateway
 from assistflow_runtime.history import estimate_tokens
 from assistflow_runtime.limits import TurnLimits
 from assistflow_runtime.prompts import PromptRegistry
@@ -51,16 +53,6 @@ _RETRIEVAL_TOOL = "search_support_policy"
 _SUMMARY_LIMIT = 240
 
 ComposeFacts = Callable[[list[dict[str, Any]]], str]
-
-
-class ToolGateway(Protocol):
-    """Allowlisted schemas and tier-0 execution for one turn."""
-
-    def schemas(self) -> list[ToolSchema]:
-        """Schemas the model may see. Tier 3 names are omitted."""
-
-    def execute(self, name: str, arguments: dict[str, Any]) -> ExecutedTool:
-        """Run one tier-0 tool. Unknown names and other tiers are denied."""
 
 
 class ModelAdapterPort(Protocol):
@@ -118,7 +110,8 @@ class AgentLoop:
         model_calls = 0
         provider = "mock"
         model_id = "mock"
-        schemas = self._gateway.schemas()
+        actor = _actor(turn_context)
+        schemas = self._gateway.list_tools()
         allowed = {item.name for item in schemas}
 
         while True:
@@ -172,7 +165,14 @@ class AgentLoop:
             if isinstance(response, ModelToolUse):
                 steps.append(_step(len(steps), StepKind.MODEL, latency, "model proposed tools"))
                 applied, retrievals = self._apply_tools(
-                    response, allowed, messages, steps, executed, proposed, retrievals
+                    response,
+                    allowed,
+                    actor,
+                    messages,
+                    steps,
+                    executed,
+                    proposed,
+                    retrievals,
                 )
                 if not applied:
                     return self._budget(
@@ -219,6 +219,7 @@ class AgentLoop:
         self,
         response: ModelToolUse,
         allowed: set[str],
+        actor: GatewayActor,
         messages: list[ModelMessage],
         steps: list[TraceStep],
         executed: list[ExecutedTool],
@@ -257,7 +258,7 @@ class AgentLoop:
                 )
                 messages.append(_tool_message(request.id, denied))
                 continue
-            outcome = self._gateway.execute(request.name, arguments)
+            outcome = self._gateway.call_tool(request.name, arguments, actor)
             executed.append(outcome)
             proposed.append(
                 ProposedToolCall(name=request.name, arguments=_plain_arguments(arguments))
@@ -358,6 +359,16 @@ class AgentLoop:
             citations=citations or [],
             grounded_answer_failures=grounded_answer_failures,
         )
+
+
+def _actor(turn_context: TurnContext) -> GatewayActor:
+    return GatewayActor(
+        tenant_id=turn_context.tenant_id,
+        customer_id=turn_context.customer_id,
+        actor_type=turn_context.actor_type,
+        correlation_id=turn_context.correlation_id,
+        conversation_id=turn_context.conversation_id,
+    )
 
 
 def _messages(history: list[HistoryMessage], customer_message: str) -> list[ModelMessage]:

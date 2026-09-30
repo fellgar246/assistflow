@@ -1,6 +1,7 @@
 """Tenant-scoped retrieval over the latest published document version."""
 
 from dataclasses import dataclass
+from typing import Protocol
 from uuid import UUID
 
 from assistflow_customers.errors import require_tenant_id
@@ -23,7 +24,22 @@ class RetrievedChunk:
     score: float
 
 
-class KnowledgeRetriever:
+class KnowledgeRetriever(Protocol):
+    """Retrieval port. Callers do not choose a storage provider."""
+
+    @property
+    def chunk_cap(self) -> int:
+        """Maximum chunks one call may return."""
+
+    @property
+    def score_floor(self) -> float:
+        """Minimum score kept for a scored provider."""
+
+    def retrieve(self, tenant_id: UUID, query: str, limit: int) -> list[RetrievedChunk]:
+        """Return scored chunks for one tenant. `limit` cannot exceed the cap."""
+
+
+class LocalKnowledgeRetriever:
     """Score published chunks for one tenant. Other tenants and retired rows are absent."""
 
     def __init__(
@@ -78,8 +94,13 @@ class KnowledgeRetriever:
                     score=score,
                 )
             )
-        scored.sort(key=lambda item: (-item.score, item.title, item.text))
-        return scored[:limit]
+        return rank_chunks(scored, limit)
+
+
+def rank_chunks(chunks: list[RetrievedChunk], limit: int) -> list[RetrievedChunk]:
+    """Highest score first. Title and text break ties."""
+    ranked = sorted(chunks, key=lambda item: (-item.score, item.title, item.text))
+    return ranked[:limit]
 
 
 def _latest_published(session: Session, tenant_id: UUID) -> list[UUID]:
