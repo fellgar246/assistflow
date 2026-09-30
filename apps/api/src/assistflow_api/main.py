@@ -16,6 +16,7 @@ from assistflow_api.http import register_error_handlers
 from assistflow_api.logging import configure_logging
 from assistflow_api.routes.conversations import router as conversation_router
 from assistflow_api.routes.support import router as support_router
+from assistflow_runtime.quota import SessionQuota
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app = FastAPI(title="AssistFlow API", lifespan=lifespan)
     app.state.settings = resolved
     app.state.engine = resolved_engine
+    app.state.session_quota = SessionQuota(resolved.max_sessions_per_day)
     register_error_handlers(app)
     app.include_router(support_router)
     app.include_router(conversation_router)

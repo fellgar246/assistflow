@@ -17,3 +17,8 @@ output "budget_enabled" {
   description = "Whether the monthly budget resource is created."
   value       = var.budget_enabled
 }
+
+output "agent_runtime_arn" {
+  description = "Hosted runtime ARN. Null while enable_agentcore is false."
+  value       = module.agentcore.agent_runtime_arn
+}

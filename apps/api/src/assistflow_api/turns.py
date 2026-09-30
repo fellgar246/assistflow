@@ -1,5 +1,7 @@
 """Run one customer turn, execute allowlisted reads, and store the reply."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -28,7 +30,7 @@ from assistflow_conversations.repository import (
 )
 from sqlalchemy.orm import Session
 
-from assistflow_api.agents import LoopRunner
+from assistflow_api.agents import TurnRunner
 from assistflow_knowledge.embeddings import DeterministicEmbedding
 from assistflow_knowledge.retriever import KnowledgeRetriever
 from assistflow_runtime import (
@@ -54,7 +56,7 @@ def complete_agent_turn(
     customer_message: str,
     idempotency_key: str,
     actor: ActorContext,
-    runner: LoopRunner,
+    runner: TurnRunner,
     *,
     max_tool_calls: int = 5,
     max_chunks: int = 4,
@@ -62,28 +64,17 @@ def complete_agent_turn(
 ) -> AgentResult:
     """Ask the runner for a reply, run tier-0 tools, and persist the answer."""
     history = _history(session, tenant_id, conversation_id, customer_message_id)
-    registry = build_registry(
-        service_handlers(
-            session,
-            retriever=KnowledgeRetriever(
-                session,
-                DeterministicEmbedding(),
-                chunk_cap=max_chunks,
-                score_floor=score_floor,
-            ),
-        )
-    )
     bound = runner.bind(
-        _RegistryGateway(
-            registry,
-            ToolContext(
-                tenant_id=tenant_id,
-                customer_id=customer_id,
-                actor_type=actor.actor_type,
-                correlation_id=actor.correlation_id,
-                conversation_id=conversation_id,
-            ),
-            max_tool_calls,
+        build_turn_gateway(
+            session,
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            conversation_id=conversation_id,
+            actor_type=actor.actor_type,
+            correlation_id=actor.correlation_id,
+            max_tool_calls=max_tool_calls,
+            max_chunks=max_chunks,
+            score_floor=score_floor,
         )
     )
     result = bound.run(
@@ -140,6 +131,8 @@ def complete_agent_turn(
             provider=result.trace.provider,
             model_id=result.trace.model_id,
             grounded_answer_failures=result.grounded_answer_failures,
+            runtime_invocation_id=result.trace.runtime_invocation_id,
+            duration_ms=result.trace.duration_ms,
             created_at=created_at,
             steps=tuple(
                 AgentTraceStepRecord(
@@ -155,6 +148,43 @@ def complete_agent_turn(
         actor,
     )
     return result
+
+
+def build_turn_gateway(
+    session: Session,
+    *,
+    tenant_id: UUID,
+    customer_id: UUID,
+    conversation_id: UUID,
+    actor_type: str,
+    correlation_id: str,
+    max_tool_calls: int,
+    max_chunks: int,
+    score_floor: float,
+) -> _RegistryGateway:
+    """Bind the shared tool registry for one tenant. The model does not choose the tenant."""
+    registry = build_registry(
+        service_handlers(
+            session,
+            retriever=KnowledgeRetriever(
+                session,
+                DeterministicEmbedding(),
+                chunk_cap=max_chunks,
+                score_floor=score_floor,
+            ),
+        )
+    )
+    return _RegistryGateway(
+        registry,
+        ToolContext(
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            actor_type=actor_type,
+            correlation_id=correlation_id,
+            conversation_id=conversation_id,
+        ),
+        max_tool_calls,
+    )
 
 
 def tool_activity_for(

@@ -312,6 +312,8 @@ class AgentTraceRecord:
     created_at: datetime
     steps: tuple[AgentTraceStepRecord, ...]
     grounded_answer_failures: int = 0
+    runtime_invocation_id: str | None = None
+    duration_ms: int | None = None
 
 
 class AgentTraceRepository:
@@ -338,6 +340,8 @@ class AgentTraceRepository:
                 provider=record.provider,
                 model_id=record.model_id,
                 grounded_answer_failures=record.grounded_answer_failures,
+                runtime_invocation_id=record.runtime_invocation_id,
+                duration_ms=record.duration_ms,
                 created_at=record.created_at,
             )
         )
@@ -415,6 +419,8 @@ def _trace(row: AgentTraceRow, steps: tuple[AgentTraceStepRecord, ...]) -> Agent
         created_at=row.created_at,
         steps=steps,
         grounded_answer_failures=row.grounded_answer_failures,
+        runtime_invocation_id=row.runtime_invocation_id,
+        duration_ms=row.duration_ms,
     )
 
 

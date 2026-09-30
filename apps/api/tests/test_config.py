@@ -25,6 +25,9 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.max_agent_steps == 8
     assert settings.max_tool_calls_per_turn == 5
     assert settings.max_memory_events_per_session == 30
+    assert settings.max_sessions_per_day == 25
+    assert settings.agentcore_runtime_arn == ""
+    assert settings.agentcore_invocation_timeout_seconds == 30.0
 
 
 def test_aws_demo_profile_enables_hosted_agent_and_model_only() -> None:

@@ -57,3 +57,9 @@ variable "enable_schedules" {
   type        = bool
   default     = false
 }
+
+variable "agentcore_container_image_uri" {
+  description = "Image for the hosted runtime. Used only when enable_agentcore is true."
+  type        = string
+  default     = ""
+}

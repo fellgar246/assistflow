@@ -1,7 +1,7 @@
 """Store and read support conversations.
 
-When the assistant is enabled, a customer message also stores an in-process
-reply and a trace. This module does not import a hosted model SDK.
+When the assistant is enabled, a customer message also stores a reply and a trace.
+The hosted runtime client is constructed only when that flag is on.
 """
 
 from typing import Annotated, Any
@@ -186,7 +186,11 @@ def post_customer_message(
         acknowledge=not assistant_enabled,
     )
     if assistant_enabled and not result.replayed:
-        runner = build_agent_runner(settings)
+        runner = build_agent_runner(
+            settings,
+            quota=getattr(request.app.state, "session_quota", None),
+            transport=getattr(request.app.state, "runtime_transport", None),
+        )
         if runner is not None:
             complete_agent_turn(
                 session,

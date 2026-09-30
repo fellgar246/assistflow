@@ -98,6 +98,8 @@ class AgentTraceRow(Base):
     provider: Mapped[str] = mapped_column(String(32), default="mock")
     model_id: Mapped[str] = mapped_column(String(200), default="mock")
     grounded_answer_failures: Mapped[int] = mapped_column(Integer, default=0)
+    runtime_invocation_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 

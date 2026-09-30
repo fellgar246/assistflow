@@ -90,6 +90,28 @@ Stop the database with `make down`.
 
 `LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, managed-retrieval, and long-term-memory flags off, even if other variables request them. Credentials are read from the environment only. Do not commit a filled `.env` file.
 
+## Hosted agent runtime
+
+The default API runs the assistant in-process. A hosted runtime uses the same turn contract and stays off until you enable it.
+
+Revalidate current AgentCore runtime pricing before you apply anything. This repository does not embed a provider price.
+
+Pull-request checks do not package or deploy the runtime. Apply it yourself:
+
+```bash
+export AGENTCORE_ENABLED=true
+export AGENTCORE_CONTAINER_IMAGE_URI=<your-image-uri>
+make deploy-agentcore
+```
+
+`make deploy-agentcore` packages the agent sources and applies the dev stack with `enable_agentcore=true`. Without `AGENTCORE_ENABLED=true` and an image URI, the command stops before Terraform runs. The dev stack's `enable_agentcore` variable defaults to false, so a normal apply creates no runtime resource.
+
+Smoke compares seeded order facts (status, hub, estimated delivery date, and the tools used). It skips when `AGENTCORE_RUNTIME_ARN` or cloud credentials are missing:
+
+```bash
+make smoke-agentcore
+```
+
 ## Quality gates
 
 ```bash
@@ -104,6 +126,8 @@ make test
 | `typecheck` | mypy, TypeScript, and `terraform validate` |
 | `test` | pytest and Vitest |
 | `up` / `down` | PostgreSQL via Docker Compose |
+| `deploy-agentcore` | Operator-only hosted runtime package and apply |
+| `smoke-agentcore` | Operator-only hosted order-fact check; skips without credentials |
 
 Browser tests are scaffolded with Playwright and are not part of `make test`. Install browsers first, then run `npm --prefix apps/web run test:e2e`.
 

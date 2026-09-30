@@ -48,3 +48,10 @@ module "budget" {
   enabled           = var.budget_enabled
   monthly_limit_usd = var.monthly_budget_usd
 }
+
+module "agentcore" {
+  source = "../../modules/agentcore"
+
+  enabled             = var.enable_agentcore
+  container_image_uri = var.agentcore_container_image_uri
+}

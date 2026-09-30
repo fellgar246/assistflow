@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web
+.PHONY: lint typecheck test up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore
 
 PYTHON_PATHS := src tests \
 	../../services/conversations/src \
@@ -13,7 +13,8 @@ PYTHON_PATHS := src tests \
 	../../packages/test-fixtures/src \
 	../../agent/runtime/src \
 	../../agent/tools/src \
-	../../agent/tools/tests
+	../../agent/tools/tests \
+	../../scripts
 
 UV ?= uv
 
@@ -57,3 +58,10 @@ test-api:
 
 test-web:
 	npm --prefix apps/web test
+
+# Operator commands. Pull-request checks do not run these targets.
+deploy-agentcore:
+	$(UV) run --directory apps/api python ../../scripts/deploy_agentcore.py --apply
+
+smoke-agentcore:
+	$(UV) run --directory apps/api python ../../scripts/smoke_agentcore.py

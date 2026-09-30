@@ -40,5 +40,6 @@ jobs:
       - name: Typecheck
         run: make typecheck
 
+      # Hosted agent packaging and smoke stay operator commands.
       - name: Test
         run: make test

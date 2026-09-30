@@ -44,6 +44,9 @@ def test_support_migration_applies_and_downgrades(
     assert "order_number" in columns
     message_indexes = {index["name"] for index in inspect(engine).get_indexes("messages")}
     assert "ix_messages_conversation_created" in message_indexes
+    trace_columns = {column["name"] for column in inspect(engine).get_columns("agent_traces")}
+    assert "runtime_invocation_id" in trace_columns
+    assert "duration_ms" in trace_columns
 
     command.downgrade(config, "base")
     remaining = set(inspect(engine).get_table_names())

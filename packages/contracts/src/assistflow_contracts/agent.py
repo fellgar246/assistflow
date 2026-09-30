@@ -105,6 +105,8 @@ class AgentTrace(BaseModel):
     provider: str = "mock"
     model_id: str = "mock"
     grounded_answer_failures: int = Field(default=0, ge=0)
+    runtime_invocation_id: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
 
 
 class ScriptedStep(BaseModel):

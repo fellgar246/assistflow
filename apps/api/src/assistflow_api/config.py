@@ -109,6 +109,8 @@ class Settings(BaseModel):
     max_bedrock_input_tokens_per_call: int = 6000
     max_bedrock_output_tokens_per_call: int = 800
     max_memory_events_per_session: int = 30
+    agentcore_runtime_arn: str = ""
+    agentcore_invocation_timeout_seconds: float = 30.0
 
 
 def repo_root() -> Path:
@@ -193,6 +195,10 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             values, "MAX_BEDROCK_OUTPUT_TOKENS_PER_CALL", 800
         ),
         max_memory_events_per_session=_optional_int(values, "MAX_MEMORY_EVENTS_PER_SESSION", 30),
+        agentcore_runtime_arn=values.get("AGENTCORE_RUNTIME_ARN", "").strip(),
+        agentcore_invocation_timeout_seconds=_optional_float(
+            values, "AGENTCORE_INVOCATION_TIMEOUT_SECONDS", 30.0
+        ),
     )
 
 

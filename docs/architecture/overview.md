@@ -28,6 +28,8 @@ The default execution profile is local:
 
 `LOCAL_ONLY_MODE=true` is a hard stop. It turns those hosted flags off even when the rest of the environment asks for them. The API still serves health checks.
 
+The same turn contract can run in-process or in a hosted runtime. The hosted path is off unless the operator enables it and deploys it with a separate command. Pull-request checks do not create that runtime. A hosted session id is the conversation id. The application reserves the daily session before the remote call.
+
 ## Limits
 
 Execution limits live in configuration, not in prompts. Exceeding a limit stops the turn. It does not retry without a bound. The local profile still enforces step, tool, and retrieval caps so the same guards are tested without a cloud account.
