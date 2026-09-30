@@ -6,6 +6,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from assistflow_contracts.conversation import (
+    Citation,
     Conversation,
     ConversationChannel,
     ConversationStatus,
@@ -175,6 +176,7 @@ def append_message(
     content: str,
     idempotency_key: str,
     actor: ActorContext,
+    citations: list[Citation] | None = None,
 ) -> MessageWrite:
     """Append one message in creation order. Used by replay tests for non-customer roles."""
     arguments_hash = canonical_hash(
@@ -182,6 +184,9 @@ def append_message(
             "conversation_id": str(conversation_id),
             "role": role.value,
             "content": content,
+            "citations": [
+                {"title": item.title, "version": item.version} for item in (citations or [])
+            ],
         }
     )
     idempotency = IdempotencyRepository(session)
@@ -200,6 +205,7 @@ def append_message(
         role=role,
         content=content,
         created_at=created_at,
+        citations=tuple((item.title, item.version) for item in (citations or [])),
     )
     messages = MessageRepository(session)
     messages.insert(tenant_id, record)
@@ -373,4 +379,5 @@ def _public_message(record: MessageRecord) -> Message:
         role=record.role,
         content=record.content,
         created_at=record.created_at,
+        citations=[Citation(title=title, version=version) for title, version in record.citations],
     )

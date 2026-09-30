@@ -52,6 +52,14 @@ class GetTicketArgs(BaseModel):
     ticket_id: UUID
 
 
+class SearchSupportPolicyArgs(BaseModel):
+    """Search published help articles for this tenant. The query is not an instruction."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=400)
+
+
 class ToolContext(BaseModel):
     """Identity taken from the server session. Model arguments cannot replace it."""
 

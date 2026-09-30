@@ -10,11 +10,14 @@ from assistflow_shipping.repository import ShipmentRepository
 from assistflow_tickets.repository import TicketRepository
 from sqlalchemy.orm import Session
 
+from assistflow_knowledge.embeddings import DeterministicEmbedding
+from assistflow_knowledge.retriever import DEFAULT_CHUNK_CAP, KnowledgeRetriever
 from assistflow_tools.models import (
     GetCustomerProfileArgs,
     GetOrderArgs,
     GetShipmentArgs,
     GetTicketArgs,
+    SearchSupportPolicyArgs,
     ToolContext,
     ToolError,
 )
@@ -28,14 +31,25 @@ from assistflow_tools.projections import (
 Handler = Callable[[ToolContext, object], dict[str, object]]
 
 
-def service_handlers(session: Session, *, today: date | None = None) -> dict[str, Handler]:
-    """Bind the four read tools to the current database session."""
+def service_handlers(
+    session: Session,
+    *,
+    today: date | None = None,
+    retriever: KnowledgeRetriever | None = None,
+) -> dict[str, Handler]:
+    """Bind the read tools, including policy search, to the current database session."""
     clock = date.today() if today is None else today
+    search = (
+        retriever
+        if retriever is not None
+        else KnowledgeRetriever(session, DeterministicEmbedding())
+    )
     return {
         "get_order": _order_handler(session, clock),
         "get_shipment": _shipment_handler(session, clock),
         "get_customer_profile": _profile_handler(session),
         "get_ticket": _ticket_handler(session),
+        "search_support_policy": _policy_handler(search),
     }
 
 
@@ -97,6 +111,31 @@ def _ticket_handler(session: Session) -> Handler:
         if context.actor_type == "customer" and ticket.customer_id != context.customer_id:
             raise ToolError("not_found", "That ticket was not found.")
         return project_ticket(ticket)
+
+    return handle
+
+
+def _policy_handler(retriever: KnowledgeRetriever) -> Handler:
+    def handle(context: ToolContext, arguments: object) -> dict[str, object]:
+        parsed = (
+            arguments
+            if isinstance(arguments, SearchSupportPolicyArgs)
+            else SearchSupportPolicyArgs.model_validate(arguments)
+        )
+        limit = min(DEFAULT_CHUNK_CAP, retriever.chunk_cap)
+        found = retriever.retrieve(context.tenant_id, parsed.query, limit)
+        return {
+            "chunks": [
+                {
+                    "document_id": str(item.document_id),
+                    "version": item.version,
+                    "title": item.title,
+                    "text": item.text,
+                    "score": item.score,
+                }
+                for item in found
+            ]
+        }
 
     return handle
 

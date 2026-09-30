@@ -16,6 +16,7 @@ from assistflow_tools.models import (
     GetShipmentArgs,
     GetTicketArgs,
     RiskLevel,
+    SearchSupportPolicyArgs,
     ToolContext,
     ToolError,
     ToolOutcome,
@@ -30,6 +31,7 @@ _ARGUMENT_MODELS: dict[str, type[BaseModel]] = {
     "get_shipment": GetShipmentArgs,
     "get_customer_profile": GetCustomerProfileArgs,
     "get_ticket": GetTicketArgs,
+    "search_support_policy": SearchSupportPolicyArgs,
 }
 
 

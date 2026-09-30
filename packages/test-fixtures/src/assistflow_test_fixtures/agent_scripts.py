@@ -35,7 +35,24 @@ def select_script(customer_message: str) -> ScriptedPlan:
     lowered = customer_message.lower()
     if any(hint in lowered for hint in _ORDER_HINTS):
         return order_status_plan(customer_message)
-    return fallback_plan()
+    return policy_plan(customer_message)
+
+
+def policy_plan(customer_message: str) -> ScriptedPlan:
+    """Ask for published help articles. The application answers from those chunks."""
+    query = customer_message.strip()[:400]
+    return ScriptedPlan(
+        assistant_message=FALLBACK_MESSAGE,
+        steps=[
+            ScriptedStep(kind=StepKind.MODEL, summary="policy question"),
+            ScriptedStep(
+                kind=StepKind.TOOL_PROPOSAL,
+                summary="proposed search_support_policy",
+                tool_name="search_support_policy",
+                arguments={"query": query},
+            ),
+        ],
+    )
 
 
 def order_status_plan(customer_message: str) -> ScriptedPlan:

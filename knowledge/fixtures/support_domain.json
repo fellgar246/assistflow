@@ -1,7 +1,13 @@
 {
   "policies": [
     "knowledge/policies/shipping-address.md",
-    "knowledge/policies/returns-and-refunds.md"
+    "knowledge/policies/returns-and-refunds.md",
+    "knowledge/policies/return-policy.md",
+    "knowledge/policies/refund-policy.md",
+    "knowledge/policies/shipping-policy.md",
+    "knowledge/policies/account-security.md",
+    "knowledge/product-docs/product-faq.md",
+    "knowledge/product-docs/support-playbook.md"
   ],
   "tenants": [
     {

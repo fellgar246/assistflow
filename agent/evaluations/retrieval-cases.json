@@ -1,0 +1,41 @@
+{
+  "documents": [
+    {
+      "id": "return-policy",
+      "query": "How many days do I have to return a delivered item?",
+      "title": "Return policy"
+    },
+    {
+      "id": "refund-policy",
+      "query": "What amount can a refund request use in minor currency units?",
+      "title": "Refund policy"
+    },
+    {
+      "id": "shipping-policy",
+      "query": "What is the DFW hub cutoff when the estimated delivery date is 2099-06-15?",
+      "title": "Shipping policy"
+    },
+    {
+      "id": "account-security",
+      "query": "How do I reset a password with a sign-in code?",
+      "title": "Account security"
+    },
+    {
+      "id": "product-faq",
+      "query": "Does the warranty cover spare parts and liquid immersion?",
+      "title": "Product FAQ"
+    },
+    {
+      "id": "support-playbook",
+      "query": "What does the support playbook say about escalation hours?",
+      "title": "Support playbook"
+    }
+  ],
+  "abstentions": [
+    "What is the weather in Tokyo tomorrow?",
+    "Who won the 1998 world cup?",
+    "Write a poem about the ocean.",
+    "What is the capital of Mongolia?",
+    "How do I bake sourdough bread?"
+  ]
+}

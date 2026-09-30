@@ -47,7 +47,7 @@ uv run --directory apps/api alembic upgrade head
 make seed
 ```
 
-`make seed` can be run again. It updates the same customers, orders, shipments, and tickets instead of inserting duplicates. The fixture file is `knowledge/fixtures/support_domain.json`.
+`make seed` can be run again. It updates the same customers, orders, shipments, and tickets instead of inserting duplicates. The fixture file is `knowledge/fixtures/support_domain.json`. It also ingests the published help articles under `knowledge/policies` and `knowledge/product-docs` for each demo tenant. Re-running ingest leaves an unchanged checksum in place. `python -m assistflow_api.ingest_knowledge` from `apps/api` reloads those articles without reseeding orders.
 
 Demo tenant `11111111-1111-4111-8111-111111111111` (Harbor Goods) includes order `ORD-10482`, an in-transit shipment from the DFW hub, and one open ticket. Demo tenant `22222222-2222-4222-8222-222222222222` (Fieldline Supply) has a different order, `ORD-20817`. Send the tenant on every support request:
 

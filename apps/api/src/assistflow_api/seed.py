@@ -127,6 +127,9 @@ def seed_support_domain(engine: Engine, path: Path | None = None) -> None:
             for ticket in tenant.tickets:
                 _upsert_ticket(session, tenant.id, ticket)
         session.commit()
+    from assistflow_api.ingest_knowledge import ingest_published
+
+    ingest_published(engine, [tenant.id for tenant in document.tenants])
     logger.info("support_domain_seeded", customers=customers, orders=orders)
 
 

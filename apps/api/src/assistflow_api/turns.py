@@ -29,6 +29,8 @@ from assistflow_conversations.repository import (
 from sqlalchemy.orm import Session
 
 from assistflow_api.agents import LoopRunner
+from assistflow_knowledge.embeddings import DeterministicEmbedding
+from assistflow_knowledge.retriever import KnowledgeRetriever
 from assistflow_runtime import (
     DEFAULT_PROMPT_ID,
     DEFAULT_PROMPT_VERSION,
@@ -55,10 +57,22 @@ def complete_agent_turn(
     runner: LoopRunner,
     *,
     max_tool_calls: int = 5,
+    max_chunks: int = 4,
+    score_floor: float = 0.28,
 ) -> AgentResult:
     """Ask the runner for a reply, run tier-0 tools, and persist the answer."""
     history = _history(session, tenant_id, conversation_id, customer_message_id)
-    registry = build_registry(service_handlers(session))
+    registry = build_registry(
+        service_handlers(
+            session,
+            retriever=KnowledgeRetriever(
+                session,
+                DeterministicEmbedding(),
+                chunk_cap=max_chunks,
+                score_floor=score_floor,
+            ),
+        )
+    )
     bound = runner.bind(
         _RegistryGateway(
             registry,
@@ -101,6 +115,7 @@ def complete_agent_turn(
         assistant_text,
         f"agent-reply:{idempotency_key}",
         actor,
+        citations=result.citations,
     )
     if executions:
         ToolExecutionRepository(session).attach_message(
@@ -124,6 +139,7 @@ def complete_agent_turn(
             output_tokens=result.usage.output_tokens,
             provider=result.trace.provider,
             model_id=result.trace.model_id,
+            grounded_answer_failures=result.grounded_answer_failures,
             created_at=created_at,
             steps=tuple(
                 AgentTraceStepRecord(

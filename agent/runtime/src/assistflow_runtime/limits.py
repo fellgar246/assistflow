@@ -10,3 +10,4 @@ class TurnLimits:
     max_model_calls_per_turn: int
     max_output_tokens: int = 800
     max_input_tokens: int = 6000
+    max_retrievals_per_turn: int = 2

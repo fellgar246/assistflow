@@ -46,6 +46,7 @@ class LoopRunner:
                 max_model_calls_per_turn=settings.max_model_calls_per_turn,
                 max_output_tokens=settings.max_output_tokens,
                 max_input_tokens=settings.max_bedrock_input_tokens_per_call,
+                max_retrievals_per_turn=settings.max_retrievals_per_turn,
             ),
             compose=reply_from_tools,
             store_debug=(settings.trace_debug and settings.execution_mode is ExecutionMode.LOCAL),

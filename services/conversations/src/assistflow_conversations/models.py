@@ -44,6 +44,7 @@ class MessageRow(Base):
     role: Mapped[str] = mapped_column(String(32))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    citations: Mapped[list[dict[str, str | None]]] = mapped_column(JSON, default=list)
 
 
 class AuditEventRow(Base):
@@ -96,6 +97,7 @@ class AgentTraceRow(Base):
     output_tokens: Mapped[int] = mapped_column(Integer)
     provider: Mapped[str] = mapped_column(String(32), default="mock")
     model_id: Mapped[str] = mapped_column(String(200), default="mock")
+    grounded_answer_failures: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 

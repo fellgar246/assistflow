@@ -13,6 +13,7 @@ members = [
     "assistflow-contracts",
     "assistflow-conversations",
     "assistflow-customers",
+    "assistflow-knowledge",
     "assistflow-orders",
     "assistflow-refunds",
     "assistflow-returns",
@@ -82,6 +83,7 @@ dependencies = [
     { name = "assistflow-contracts" },
     { name = "assistflow-conversations" },
     { name = "assistflow-customers" },
+    { name = "assistflow-knowledge" },
     { name = "assistflow-orders" },
     { name = "assistflow-refunds" },
     { name = "assistflow-returns" },
@@ -112,6 +114,7 @@ requires-dist = [
     { name = "assistflow-contracts", editable = "packages/contracts" },
     { name = "assistflow-conversations", editable = "services/conversations" },
     { name = "assistflow-customers", editable = "services/customers" },
+    { name = "assistflow-knowledge", editable = "services/knowledge" },
     { name = "assistflow-orders", editable = "services/orders" },
     { name = "assistflow-refunds", editable = "services/refunds" },
     { name = "assistflow-returns", editable = "services/returns" },
@@ -176,6 +179,23 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-knowledge"
+version = "0.1.0"
+source = { editable = "services/knowledge" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
     { name = "sqlalchemy", specifier = ">=2" },
 ]
 
@@ -303,6 +323,7 @@ source = { editable = "agent/tools" }
 dependencies = [
     { name = "assistflow-contracts" },
     { name = "assistflow-customers" },
+    { name = "assistflow-knowledge" },
     { name = "assistflow-orders" },
     { name = "assistflow-shipping" },
     { name = "assistflow-tickets" },
@@ -314,6 +335,7 @@ dependencies = [
 requires-dist = [
     { name = "assistflow-contracts", editable = "packages/contracts" },
     { name = "assistflow-customers", editable = "services/customers" },
+    { name = "assistflow-knowledge", editable = "services/knowledge" },
     { name = "assistflow-orders", editable = "services/orders" },
     { name = "assistflow-shipping", editable = "services/shipping" },
     { name = "assistflow-tickets", editable = "services/tickets" },

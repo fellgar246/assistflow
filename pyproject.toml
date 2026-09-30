@@ -22,12 +22,13 @@ members = [
     "services/returns",
     "services/refunds",
     "services/tickets",
+    "services/knowledge",
 ]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["services", "packages", "apps/api/src", "apps/api/tests", "agent/runtime/src", "agent/tools/src", "agent/tools/tests"]
+src = ["services", "packages", "apps/api/src", "apps/api/tests", "agent/runtime/src", "agent/tools/src", "agent/tools/tests", "services/knowledge/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

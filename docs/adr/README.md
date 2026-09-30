@@ -8,3 +8,4 @@
 | [0004](0004-sensitive-writes-need-human-approval.md) | Sensitive writes need human approval |
 | [0005](0005-bounded-memory.md) | Memory is bounded |
 | [0006](0006-application-spend-ceiling.md) | AWS spend has an application ceiling |
+| [0007](0007-local-knowledge-index.md) | Policy answers come from a local tenant index |

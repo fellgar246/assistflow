@@ -9,6 +9,7 @@ dependencies = [
     "assistflow-orders",
     "assistflow-shipping",
     "assistflow-tickets",
+    "assistflow-knowledge",
     "pydantic>=2",
     "sqlalchemy>=2",
 ]
@@ -19,6 +20,7 @@ assistflow-customers = { workspace = true }
 assistflow-orders = { workspace = true }
 assistflow-shipping = { workspace = true }
 assistflow-tickets = { workspace = true }
+assistflow-knowledge = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

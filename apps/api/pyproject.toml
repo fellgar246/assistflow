@@ -14,6 +14,7 @@ dependencies = [
     "assistflow-tickets",
     "assistflow-runtime",
     "assistflow-tools",
+    "assistflow-knowledge",
     "assistflow-test-fixtures",
     "alembic>=1.14",
     "fastapi>=0.115",
@@ -43,6 +44,7 @@ assistflow-refunds = { workspace = true }
 assistflow-tickets = { workspace = true }
 assistflow-runtime = { workspace = true }
 assistflow-tools = { workspace = true }
+assistflow-knowledge = { workspace = true }
 assistflow-test-fixtures = { workspace = true }
 
 [build-system]
@@ -70,6 +72,7 @@ files = [
     "../../services/returns/src",
     "../../services/refunds/src",
     "../../services/tickets/src",
+    "../../services/knowledge/src",
     "../../packages/contracts/src",
     "../../packages/test-fixtures/src",
     "../../agent/runtime/src",

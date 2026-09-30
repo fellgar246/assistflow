@@ -8,6 +8,7 @@ PYTHON_PATHS := src tests \
 	../../services/returns/src \
 	../../services/refunds/src \
 	../../services/tickets/src \
+	../../services/knowledge/src \
 	../../packages/contracts/src \
 	../../packages/test-fixtures/src \
 	../../agent/runtime/src \

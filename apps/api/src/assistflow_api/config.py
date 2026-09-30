@@ -100,6 +100,8 @@ class Settings(BaseModel):
     max_tool_calls_per_turn: int = 5
     max_model_calls_per_turn: int = 4
     max_retrievals_per_turn: int = 2
+    max_chunks_per_retrieval: int = 4
+    retrieval_score_floor: float = 0.28
     max_session_minutes: int = 20
     max_output_tokens: int = 800
     max_sessions_per_day: int = 25
@@ -178,6 +180,8 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         max_tool_calls_per_turn=_optional_int(values, "MAX_TOOL_CALLS_PER_TURN", 5),
         max_model_calls_per_turn=_optional_int(values, "MAX_MODEL_CALLS_PER_TURN", 4),
         max_retrievals_per_turn=_optional_int(values, "MAX_RETRIEVALS_PER_TURN", 2),
+        max_chunks_per_retrieval=_optional_int(values, "MAX_CHUNKS_PER_RETRIEVAL", 4),
+        retrieval_score_floor=_optional_float(values, "RETRIEVAL_SCORE_FLOOR", 0.28),
         max_session_minutes=_optional_int(values, "MAX_SESSION_MINUTES", 20),
         max_output_tokens=_optional_int(values, "MAX_OUTPUT_TOKENS", 800),
         max_sessions_per_day=_optional_int(values, "MAX_SESSIONS_PER_DAY", 25),
@@ -239,6 +243,16 @@ def _optional_int(values: Mapping[str, str], name: str, default: int) -> int:
         return int(raw.strip())
     except ValueError as exc:
         raise ValueError(f"Invalid integer for {name}.") from exc
+
+
+def _optional_float(values: Mapping[str, str], name: str, default: float) -> float:
+    raw = values.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"Invalid number for {name}.") from exc
 
 
 def _read_env_file(path: Path) -> dict[str, str]:

@@ -26,6 +26,7 @@ from assistflow_contracts.agent import (
     TurnContext,
     Usage,
 )
+from assistflow_contracts.conversation import Citation
 
 from assistflow_runtime.history import estimate_tokens
 from assistflow_runtime.limits import TurnLimits
@@ -45,6 +46,8 @@ BUDGET_MESSAGE = (
     "This request is too broad for one reply. Please narrow it, or wait for a person. "
     "I have not looked up an order, delivery, return, or refund."
 )
+ABSTAIN_MESSAGE = "I do not have enough verified information to answer."
+_RETRIEVAL_TOOL = "search_support_policy"
 _SUMMARY_LIMIT = 240
 
 ComposeFacts = Callable[[list[dict[str, Any]]], str]
@@ -109,6 +112,7 @@ class AgentLoop:
         steps: list[TraceStep] = []
         executed: list[ExecutedTool] = []
         proposed: list[ProposedToolCall] = []
+        retrievals = 0
         input_tokens = 0
         output_tokens = 0
         model_calls = 0
@@ -167,7 +171,10 @@ class AgentLoop:
                 )
             if isinstance(response, ModelToolUse):
                 steps.append(_step(len(steps), StepKind.MODEL, latency, "model proposed tools"))
-                if not self._apply_tools(response, allowed, messages, steps, executed, proposed):
+                applied, retrievals = self._apply_tools(
+                    response, allowed, messages, steps, executed, proposed, retrievals
+                )
+                if not applied:
                     return self._budget(
                         turn_context.prompt,
                         steps,
@@ -193,7 +200,7 @@ class AgentLoop:
                     provider,
                     model_id,
                 )
-            answer = self._answer(text, executed)
+            answer, citations, failures = self._ground(text, executed)
             return self._finish(
                 turn_context.prompt,
                 answer,
@@ -204,6 +211,8 @@ class AgentLoop:
                 provider,
                 model_id,
                 proposed,
+                citations,
+                failures,
             )
 
     def _apply_tools(
@@ -214,13 +223,18 @@ class AgentLoop:
         steps: list[TraceStep],
         executed: list[ExecutedTool],
         proposed: list[ProposedToolCall],
-    ) -> bool:
+        retrievals: int,
+    ) -> tuple[bool, int]:
         """Execute tier-0 proposals. Return false when a cap stops the turn."""
         for request in response.requests:
             if len(steps) >= self._limits.max_agent_steps:
-                return False
+                return False, retrievals
             if len(executed) >= self._limits.max_tool_calls_per_turn:
-                return False
+                return False, retrievals
+            if request.name == _RETRIEVAL_TOOL:
+                if retrievals >= self._limits.max_retrievals_per_turn:
+                    return False, retrievals
+                retrievals += 1
             arguments = request.arguments if isinstance(request.arguments, dict) else {}
             if request.name not in allowed:
                 denied = ExecutedTool(
@@ -250,7 +264,26 @@ class AgentLoop:
             )
             steps.append(_step(len(steps), StepKind.TOOL_PROPOSAL, 0, f"proposed {request.name}"))
             messages.append(_tool_message(request.id, outcome))
-        return True
+        return True, retrievals
+
+    def _ground(
+        self, model_text: str, executed: list[ExecutedTool]
+    ) -> tuple[str, list[Citation], int]:
+        """Answer policy turns from retrieved chunks. Weak retrieval abstains."""
+        retrievals = [
+            item for item in executed if item.name == _RETRIEVAL_TOOL and item.status == "succeeded"
+        ]
+        if not retrievals:
+            return self._answer(model_text, executed), [], 0
+        chunks = _chunks(retrievals)
+        if not chunks:
+            return ABSTAIN_MESSAGE, [], 1
+        parts: list[str] = []
+        citations: list[Citation] = []
+        for index, chunk in enumerate(chunks, start=1):
+            parts.append(f"{chunk['text'].strip()} [{index}]")
+            citations.append(Citation(title=chunk["title"], version=str(chunk["version"])))
+        return " ".join(parts), citations, 0
 
     def _answer(self, model_text: str, executed: list[ExecutedTool]) -> str:
         views = [_view(item) for item in executed if item.status == "succeeded" or item.error_code]
@@ -300,6 +333,8 @@ class AgentLoop:
         provider: str,
         model_id: str,
         proposed: list[ProposedToolCall] | None = None,
+        citations: list[Citation] | None = None,
+        grounded_answer_failures: int = 0,
     ) -> AgentResult:
         trace_id = uuid4()
         return AgentResult(
@@ -316,9 +351,12 @@ class AgentLoop:
                 steps=steps,
                 provider=provider,
                 model_id=model_id,
+                grounded_answer_failures=grounded_answer_failures,
             ),
             executed_tools=executed,
             tools_handled=True,
+            citations=citations or [],
+            grounded_answer_failures=grounded_answer_failures,
         )
 
 
@@ -394,8 +432,44 @@ def _view(outcome: ExecutedTool) -> dict[str, Any]:
         "name": outcome.name,
         "status": outcome.status,
         "error_code": outcome.error_code,
-        "body": outcome.body,
+        "body": _untrusted_body(outcome),
     }
+
+
+def _untrusted_body(outcome: ExecutedTool) -> dict[str, Any] | None:
+    """Wrap retrieved article text so the model treats it as data."""
+    body = outcome.body
+    if outcome.name != _RETRIEVAL_TOOL or not isinstance(body, dict):
+        return body
+    wrapped: list[dict[str, Any]] = []
+    raw_chunks = body.get("chunks")
+    if isinstance(raw_chunks, list):
+        for chunk in raw_chunks:
+            if not isinstance(chunk, dict):
+                continue
+            copied = dict(chunk)
+            text = str(copied.get("text", ""))
+            copied["text"] = f"<untrusted_document>\n{text}\n</untrusted_document>"
+            wrapped.append(copied)
+    return {**body, "chunks": wrapped}
+
+
+def _chunks(executed: list[ExecutedTool]) -> list[dict[str, str]]:
+    found: list[dict[str, str]] = []
+    for item in executed:
+        body = item.body if isinstance(item.body, dict) else {}
+        raw = body.get("chunks")
+        if not isinstance(raw, list):
+            continue
+        for chunk in raw:
+            if not isinstance(chunk, dict):
+                continue
+            title = chunk.get("title")
+            text = chunk.get("text")
+            version = chunk.get("version")
+            if isinstance(title, str) and isinstance(text, str) and text.strip():
+                found.append({"title": title, "text": text, "version": str(version)})
+    return found
 
 
 def _plain_arguments(arguments: dict[str, Any]) -> dict[str, str | int | float | bool | None]:

@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from assistflow_contracts.conversation import (
+    Citation,
     Conversation,
     ConversationPage,
     ConversationStatus,
@@ -198,6 +199,8 @@ def post_customer_message(
                 _context(actor, correlation),
                 runner,
                 max_tool_calls=settings.max_tool_calls_per_turn,
+                max_chunks=settings.max_chunks_per_retrieval,
+                score_floor=settings.retrieval_score_floor,
             )
     if result.replayed:
         response.status_code = 200
@@ -238,6 +241,9 @@ def read_transcript(
                 content=item.content,
                 created_at=item.created_at,
                 tool_activity=activity.get(item.id, []),
+                citations=[
+                    Citation(title=title, version=version) for title, version in item.citations
+                ],
             )
             for item in visible
         ],

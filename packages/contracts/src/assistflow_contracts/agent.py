@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from assistflow_contracts.conversation import MessageRole
+from assistflow_contracts.conversation import Citation, MessageRole
 
 
 class StopReason(StrEnum):
@@ -104,6 +104,7 @@ class AgentTrace(BaseModel):
     steps: list[TraceStep]
     provider: str = "mock"
     model_id: str = "mock"
+    grounded_answer_failures: int = Field(default=0, ge=0)
 
 
 class ScriptedStep(BaseModel):
@@ -149,6 +150,8 @@ class AgentResult(BaseModel):
     trace: AgentTrace
     executed_tools: list[ExecutedTool] = Field(default_factory=list)
     tools_handled: bool = False
+    citations: list[Citation] = Field(default_factory=list)
+    grounded_answer_failures: int = Field(default=0, ge=0)
 
 
 class ModelMessage(BaseModel):

@@ -39,6 +39,7 @@ class MessageRecord:
     role: MessageRole
     content: str
     created_at: datetime
+    citations: tuple[tuple[str, str | None], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,21 @@ def _conversation(row: ConversationRow) -> ConversationRecord:
     )
 
 
+def _citations(raw: object) -> tuple[tuple[str, str | None], ...]:
+    if not isinstance(raw, list):
+        return ()
+    found: list[tuple[str, str | None]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title")
+        if not isinstance(title, str) or title == "":
+            continue
+        version = item.get("version")
+        found.append((title, version if isinstance(version, str) else None))
+    return tuple(found)
+
+
 def _message(row: MessageRow) -> MessageRecord:
     return MessageRecord(
         id=row.id,
@@ -75,6 +91,7 @@ def _message(row: MessageRow) -> MessageRecord:
         role=MessageRole(row.role),
         content=row.content,
         created_at=row.created_at,
+        citations=_citations(row.citations),
     )
 
 
@@ -262,6 +279,9 @@ class MessageRepository:
                 role=record.role.value,
                 content=record.content,
                 created_at=record.created_at,
+                citations=[
+                    {"title": title, "version": version} for title, version in record.citations
+                ],
             )
         )
 
@@ -291,6 +311,7 @@ class AgentTraceRecord:
     model_id: str
     created_at: datetime
     steps: tuple[AgentTraceStepRecord, ...]
+    grounded_answer_failures: int = 0
 
 
 class AgentTraceRepository:
@@ -316,6 +337,7 @@ class AgentTraceRepository:
                 output_tokens=record.output_tokens,
                 provider=record.provider,
                 model_id=record.model_id,
+                grounded_answer_failures=record.grounded_answer_failures,
                 created_at=record.created_at,
             )
         )
@@ -392,6 +414,7 @@ def _trace(row: AgentTraceRow, steps: tuple[AgentTraceStepRecord, ...]) -> Agent
         model_id=row.model_id,
         created_at=row.created_at,
         steps=steps,
+        grounded_answer_failures=row.grounded_answer_failures,
     )
 
 
