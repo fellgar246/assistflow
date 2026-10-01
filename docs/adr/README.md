@@ -12,3 +12,4 @@
 | [0008](0008-hosted-runtime-is-opt-in.md) | The hosted runtime is opt-in |
 | [0009](0009-business-reads-use-the-tool-gateway.md) | Business reads use the tool gateway |
 | [0010](0010-retrieval-provider-is-configuration.md) | The retrieval provider is configuration |
+| [0011](0011-guardrails-fail-closed.md) | Guardrails are optional and fail closed |

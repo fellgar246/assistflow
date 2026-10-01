@@ -36,6 +36,14 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.managed_knowledge_base_id == ""
     assert settings.managed_knowledge_bases == {}
     assert settings.managed_rag_metadata_key == ""
+    assert settings.guardrails_enabled is False
+    assert settings.guardrail_id == ""
+    assert settings.guardrail_version == "DRAFT"
+    assert settings.guardrail_harmful_content_strength == "MEDIUM"
+    assert settings.guardrail_denied_topic_strength == "HIGH"
+    assert settings.guardrail_sensitive_information_strength == "HIGH"
+    assert settings.guardrail_prompt_attack_strength == "HIGH"
+    assert settings.guardrail_contextual_grounding_threshold is None
 
 
 def test_aws_demo_profile_enables_hosted_agent_and_model_only() -> None:
@@ -68,6 +76,7 @@ def test_local_only_mode_forces_hosted_features_off() -> None:
             "MANAGED_RAG_ENABLED": "true",
             "LONG_TERM_MEMORY_ENABLED": "true",
             "RAG_PROVIDER": "managed",
+            "GUARDRAILS_ENABLED": "true",
         }
     )
 
@@ -79,6 +88,12 @@ def test_local_only_mode_forces_hosted_features_off() -> None:
     assert settings.long_term_memory_enabled is False
     assert settings.rag_provider is RagProvider.LOCAL
     assert settings.ai_enabled is True
+    assert settings.guardrails_enabled is False
+
+
+def test_invalid_guardrail_strength_is_rejected() -> None:
+    with pytest.raises(ValueError, match="GUARDRAIL_HARMFUL_CONTENT_STRENGTH"):
+        load_settings({"GUARDRAIL_HARMFUL_CONTENT_STRENGTH": "extreme"})
 
 
 def test_invalid_execution_mode_is_rejected() -> None:

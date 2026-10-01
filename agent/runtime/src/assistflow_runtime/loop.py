@@ -1,6 +1,7 @@
 """Shared turn loop. The model proposes; this loop validates, runs tier-0 tools, and answers."""
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from typing import Any, Protocol
@@ -27,12 +28,25 @@ from assistflow_contracts.agent import (
     Usage,
 )
 from assistflow_contracts.conversation import Citation
-from assistflow_contracts.gateway import GatewayActor
+from assistflow_contracts.gateway import GatewayActor, is_allowlisted_tool
 
 from assistflow_runtime.gateway import ToolGateway
+from assistflow_runtime.guardrails import (
+    DENIED_TOPIC_MESSAGE,
+    GUARDRAIL_UNAVAILABLE_MESSAGE,
+    GuardrailAction,
+    GuardrailDecision,
+    GuardrailFilter,
+    NoOpGuardrailFilter,
+    customer_text_after_guardrail,
+    reveals_system_prompt,
+)
 from assistflow_runtime.history import estimate_tokens
 from assistflow_runtime.limits import TurnLimits
 from assistflow_runtime.prompts import PromptRegistry
+from assistflow_runtime.redaction import redact_data, redact_text
+
+_LOGGER = logging.getLogger("assistflow.turn")
 
 # Output beyond the configured token ceiling is rejected. The model text is not stored.
 OUTPUT_LIMIT_MESSAGE = (
@@ -77,6 +91,7 @@ class AgentLoop:
         compose: ComposeFacts,
         *,
         store_debug: bool = False,
+        guardrail: GuardrailFilter | None = None,
     ) -> None:
         self._adapter = adapter
         self._gateway = gateway
@@ -84,6 +99,7 @@ class AgentLoop:
         self._limits = limits
         self._compose = compose
         self._store_debug = store_debug
+        self._guardrail = guardrail if guardrail is not None else NoOpGuardrailFilter()
 
     def run(self, turn_context: TurnContext) -> AgentResult:
         prompt = self._prompts.get(turn_context.prompt.id, turn_context.prompt.version)
@@ -111,8 +127,24 @@ class AgentLoop:
         provider = "mock"
         model_id = "mock"
         actor = _actor(turn_context)
-        schemas = self._gateway.list_tools()
+        schemas = [item for item in self._gateway.list_tools() if is_allowlisted_tool(item.name)]
         allowed = {item.name for item in schemas}
+        decision, model_calls = self._screen(
+            "input", turn_context.customer_message, model_calls, steps
+        )
+        if decision.action is GuardrailAction.BLOCK:
+            return self._refusal(
+                turn_context.prompt, DENIED_TOPIC_MESSAGE, StopReason.COMPLETED, steps
+            )
+        if decision.action is GuardrailAction.UNAVAILABLE:
+            return self._refusal(
+                turn_context.prompt,
+                GUARDRAIL_UNAVAILABLE_MESSAGE,
+                StopReason.FAILED,
+                steps,
+            )
+        if decision.action is GuardrailAction.REDACT and decision.text.strip():
+            messages = _messages(turn_context.history, decision.text)
 
         while True:
             if len(steps) >= self._limits.max_agent_steps or (
@@ -187,7 +219,11 @@ class AgentLoop:
                     )
                 continue
             text = response.text if isinstance(response, ModelText) else ""
-            summary = _model_summary(text, self._store_debug)
+            summary = (
+                "model output withheld"
+                if reveals_system_prompt(text, prompt.text)
+                else _model_summary(text, self._store_debug)
+            )
             steps.append(_step(len(steps), StepKind.MODEL, latency, summary))
             if _output_exceeds(response, self._limits.max_output_tokens):
                 return self._finish(
@@ -201,10 +237,18 @@ class AgentLoop:
                     model_id,
                 )
             answer, citations, failures = self._ground(text, executed)
+            from_tools = any(item.status == "succeeded" and item.body for item in executed)
+            decision, model_calls = self._screen("output", answer, model_calls, steps)
+            customer_text, failed = customer_text_after_guardrail(
+                answer,
+                prompt.text,
+                from_tools=from_tools,
+                decision=decision,
+            )
             return self._finish(
                 turn_context.prompt,
-                answer,
-                StopReason.COMPLETED,
+                customer_text,
+                StopReason.FAILED if failed else StopReason.COMPLETED,
                 steps,
                 executed,
                 Usage(input_tokens=input_tokens, output_tokens=output_tokens),
@@ -238,14 +282,16 @@ class AgentLoop:
                 retrievals += 1
             arguments = request.arguments if isinstance(request.arguments, dict) else {}
             if request.name not in allowed:
-                denied = ExecutedTool(
-                    name=request.name,
-                    status="blocked",
-                    error_code="tool_denied",
-                    summary="That action is not available.",
-                    body=None,
-                    risk_level="tier3",
-                    arguments_hash="",
+                denied = _redacted_tool(
+                    ExecutedTool(
+                        name=request.name,
+                        status="blocked",
+                        error_code="tool_denied",
+                        summary="That action is not available.",
+                        body=None,
+                        risk_level="tier3",
+                        arguments_hash="",
+                    )
                 )
                 executed.append(denied)
                 steps.append(
@@ -258,7 +304,7 @@ class AgentLoop:
                 )
                 messages.append(_tool_message(request.id, denied))
                 continue
-            outcome = self._gateway.call_tool(request.name, arguments, actor)
+            outcome = _redacted_tool(self._gateway.call_tool(request.name, arguments, actor))
             executed.append(outcome)
             proposed.append(
                 ProposedToolCall(name=request.name, arguments=_plain_arguments(arguments))
@@ -266,6 +312,66 @@ class AgentLoop:
             steps.append(_step(len(steps), StepKind.TOOL_PROPOSAL, 0, f"proposed {request.name}"))
             messages.append(_tool_message(request.id, outcome))
         return True, retrievals
+
+    def _screen(
+        self,
+        source: str,
+        text: str,
+        model_calls: int,
+        steps: list[TraceStep],
+    ) -> tuple[GuardrailDecision, int]:
+        """Inspect text. An enabled filter counts as one model call and never gets skipped."""
+        if not self._guardrail.consumes_model_call():
+            decision = (
+                self._guardrail.inspect_output(text)
+                if source == "output"
+                else self._guardrail.inspect_input(text)
+            )
+            return decision, model_calls
+        if (
+            model_calls >= self._limits.max_model_calls_per_turn
+            or len(steps) >= self._limits.max_agent_steps
+        ):
+            return (
+                GuardrailDecision(GuardrailAction.UNAVAILABLE, GUARDRAIL_UNAVAILABLE_MESSAGE),
+                model_calls,
+            )
+        started = time.perf_counter()
+        try:
+            decision = (
+                self._guardrail.inspect_output(text)
+                if source == "output"
+                else self._guardrail.inspect_input(text)
+            )
+        except Exception:
+            decision = GuardrailDecision(GuardrailAction.UNAVAILABLE, GUARDRAIL_UNAVAILABLE_MESSAGE)
+        steps.append(
+            _step(
+                len(steps),
+                StepKind.GUARDRAIL,
+                _elapsed_ms(started),
+                f"guardrail {decision.action.value}",
+            )
+        )
+        return decision, model_calls + 1
+
+    def _refusal(
+        self,
+        prompt_ref: PromptRef,
+        message: str,
+        stop_reason: StopReason,
+        steps: list[TraceStep],
+    ) -> AgentResult:
+        return self._finish(
+            prompt_ref,
+            message,
+            stop_reason,
+            steps,
+            [],
+            Usage(),
+            "mock",
+            "mock",
+        )
 
     def _ground(
         self, model_text: str, executed: list[ExecutedTool]
@@ -338,6 +444,22 @@ class AgentLoop:
         grounded_answer_failures: int = 0,
     ) -> AgentResult:
         trace_id = uuid4()
+        assistant_message = redact_text(assistant_message)
+        if assistant_message.strip() == "":
+            assistant_message = DENIED_TOPIC_MESSAGE
+        safe_steps = [
+            step.model_copy(
+                update={"input_summary": redact_text(step.input_summary)[:_SUMMARY_LIMIT]}
+            )
+            for step in steps
+        ]
+        safe_executed = [_redacted_tool(item) for item in executed]
+        _LOGGER.info(
+            "turn_finished stop_reason=%s assistant_message=%s tool_summaries=%s",
+            stop_reason.value,
+            assistant_message,
+            " | ".join(item.summary for item in safe_executed),
+        )
         return AgentResult(
             assistant_message=assistant_message,
             proposed_tool_calls=proposed or [],
@@ -349,12 +471,12 @@ class AgentLoop:
                 prompt_id=prompt_ref.id,
                 prompt_version=prompt_ref.version,
                 stop_reason=stop_reason,
-                steps=steps,
+                steps=safe_steps,
                 provider=provider,
                 model_id=model_id,
                 grounded_answer_failures=grounded_answer_failures,
             ),
-            executed_tools=executed,
+            executed_tools=safe_executed,
             tools_handled=True,
             citations=citations or [],
             grounded_answer_failures=grounded_answer_failures,
@@ -424,8 +546,19 @@ def _output_exceeds(response: ModelResponse, max_output_tokens: int) -> bool:
 def _model_summary(text: str, store_debug: bool) -> str:
     if not store_debug:
         return "model returned text"
-    cleaned = " ".join(text.split())
+    cleaned = " ".join(redact_text(text).split())
     return cleaned[:_SUMMARY_LIMIT] if cleaned else "model returned text"
+
+
+def _redacted_tool(outcome: ExecutedTool) -> ExecutedTool:
+    body = redact_data(outcome.body) if outcome.body is not None else None
+    redacted_body = body if isinstance(body, dict) else None
+    return outcome.model_copy(
+        update={
+            "summary": redact_text(outcome.summary)[:_SUMMARY_LIMIT],
+            "body": redacted_body,
+        }
+    )
 
 
 def _tool_message(tool_call_id: str, outcome: ExecutedTool) -> ModelMessage:

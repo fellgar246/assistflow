@@ -4,10 +4,9 @@ from typing import Any
 
 from assistflow_contracts.agent import ExecutedTool, ToolSchema
 from assistflow_contracts.gateway import (
-    READ_TOOL_NAMES,
-    TIER3_TOOL_NAMES,
     GatewayActor,
     arguments_hash,
+    is_allowlisted_tool,
     refuses_unsafe_arguments,
 )
 
@@ -30,7 +29,7 @@ class LocalToolGateway:
     def list_tools(self) -> list[ToolSchema]:
         advertised: list[ToolSchema] = []
         for tool in self._registry.advertised():
-            if tool.name not in READ_TOOL_NAMES or tool.name in TIER3_TOOL_NAMES:
+            if not is_allowlisted_tool(tool.name):
                 continue
             if tool.risk_level.value != "tier0":
                 continue
@@ -53,7 +52,7 @@ class LocalToolGateway:
         digest = arguments_hash(name, arguments)
         if actor_context is None:
             return _denied(name, digest, "missing_actor", "A tenant context is required.")
-        if name in TIER3_TOOL_NAMES or name not in READ_TOOL_NAMES:
+        if not is_allowlisted_tool(name):
             return _denied(name, digest, "tool_denied", "That action is not available.", tier3=True)
         if refuses_unsafe_arguments(arguments):
             return _denied(name, digest, "invalid_arguments", "The arguments are not allowed.")

@@ -88,7 +88,7 @@ List routes take `limit` (default 20, maximum 100) and an opaque `cursor`. The g
 
 Stop the database with `make down`.
 
-`LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, managed-retrieval, and long-term-memory flags off, and it forces retrieval back to the local index even if `RAG_PROVIDER` names an AWS provider. Credentials are read from the environment only. Do not commit a filled `.env` file.
+`LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, guardrail, managed-retrieval, and long-term-memory flags off, and it forces retrieval back to the local index even if `RAG_PROVIDER` names an AWS provider. Credentials are read from the environment only. Do not commit a filled `.env` file.
 
 ## Retrieval
 
@@ -139,6 +139,12 @@ make smoke-gateway
 ```
 
 Pull-request checks do not run either smoke command.
+
+## Guardrails
+
+Tool allowlisting, argument checks, tenant scope, and redaction run in every environment. Bearer tokens, AWS access-key ids, and card numbers are removed from stored replies, tool summaries, traces, and logs.
+
+`GUARDRAILS_ENABLED=true` adds a hosted filter only when `BEDROCK_ENABLED=true`. The filter checks the customer message before any tool runs and checks the reply before it is stored. A filter error refuses the turn. Set `GUARDRAIL_ID` to the resource that uses the strengths in the environment. An empty id refuses the turn and does not construct a client. Local tests use the no-op filter. Order facts still come from tools when a grounding check is enabled.
 
 ## Quality gates
 

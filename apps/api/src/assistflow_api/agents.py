@@ -6,7 +6,11 @@ The data-plane client is built only when the hosted runtime is enabled.
 from typing import Protocol
 
 from assistflow_contracts.agent import AgentResult, AgentRunner, ModelAdapter, TurnContext
+from assistflow_test_fixtures.agent_scripts import follow_up_calls, reply_from_tools, select_script
+
+from assistflow_api.config import ExecutionMode, ModelProvider, Settings, repo_root
 from assistflow_runtime.gateway import ToolGateway
+from assistflow_runtime.guardrails import GuardrailStrengths, build_guardrail_filter
 from assistflow_runtime.hosted_runner import (
     AgentCoreRuntimeRunner,
     BotoRuntimeTransport,
@@ -18,9 +22,6 @@ from assistflow_runtime.loop import AgentLoop
 from assistflow_runtime.mock_adapter import MockModelAdapter
 from assistflow_runtime.prompts import PromptRegistry
 from assistflow_runtime.quota import SessionQuota
-from assistflow_test_fixtures.agent_scripts import follow_up_calls, reply_from_tools, select_script
-
-from assistflow_api.config import ExecutionMode, ModelProvider, Settings, repo_root
 
 
 def build_model_adapter(settings: Settings) -> ModelAdapter:
@@ -76,6 +77,22 @@ class InProcessAgentRunner:
             ),
             compose=reply_from_tools,
             store_debug=(settings.trace_debug and settings.execution_mode is ExecutionMode.LOCAL),
+            guardrail=build_guardrail_filter(
+                bedrock_enabled=settings.bedrock_enabled,
+                guardrails_enabled=settings.guardrails_enabled,
+                guardrail_id=settings.guardrail_id,
+                guardrail_version=settings.guardrail_version,
+                region=settings.aws_region,
+                strengths=GuardrailStrengths(
+                    harmful_content=settings.guardrail_harmful_content_strength,
+                    denied_topics=settings.guardrail_denied_topic_strength,
+                    sensitive_information=settings.guardrail_sensitive_information_strength,
+                    prompt_attack=settings.guardrail_prompt_attack_strength,
+                    contextual_grounding_threshold=(
+                        settings.guardrail_contextual_grounding_threshold
+                    ),
+                ),
+            ),
         )
 
     def run(self, turn_context: TurnContext) -> AgentResult:

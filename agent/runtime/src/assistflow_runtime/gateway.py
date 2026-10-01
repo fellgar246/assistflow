@@ -11,10 +11,9 @@ from typing import Any, Protocol
 
 from assistflow_contracts.agent import ExecutedTool, ToolSchema
 from assistflow_contracts.gateway import (
-    READ_TOOL_NAMES,
-    TIER3_TOOL_NAMES,
     GatewayActor,
     arguments_hash,
+    is_allowlisted_tool,
     refuses_unsafe_arguments,
     sign_actor_context,
 )
@@ -166,7 +165,7 @@ class AgentCoreToolGateway:
                 "missing_actor",
                 "A tenant context is required.",
             )
-        if name in TIER3_TOOL_NAMES or name not in READ_TOOL_NAMES:
+        if not is_allowlisted_tool(name):
             return _result(
                 name,
                 arguments,
@@ -236,7 +235,7 @@ def _published_tool(item: object) -> ToolSchema | None:
     if not isinstance(item, dict):
         return None
     name = item.get("name")
-    if not isinstance(name, str) or name not in READ_TOOL_NAMES or name in TIER3_TOOL_NAMES:
+    if not isinstance(name, str) or not is_allowlisted_tool(name):
         return None
     description = item.get("description")
     text = description.strip() if isinstance(description, str) and description.strip() else name

@@ -17,6 +17,9 @@ from assistflow_contracts.agent import (
     ToolUseRequest,
     TurnContext,
 )
+from assistflow_test_fixtures.agent_scripts import follow_up_calls, select_script
+
+from assistflow_api.config import load_settings, repo_root
 from assistflow_runtime.gateway import ToolGateway
 from assistflow_runtime.history import estimate_tokens
 from assistflow_runtime.hosted_model import HostedModelAdapter
@@ -28,9 +31,6 @@ from assistflow_runtime.loop import (
 )
 from assistflow_runtime.mock_adapter import MockModelAdapter
 from assistflow_runtime.prompts import PromptRegistry
-from assistflow_test_fixtures.agent_scripts import follow_up_calls, select_script
-
-from assistflow_api.config import load_settings, repo_root
 
 ORDER_BODY = {
     "order_id": "ORD-10482",

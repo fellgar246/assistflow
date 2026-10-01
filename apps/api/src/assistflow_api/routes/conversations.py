@@ -38,6 +38,7 @@ from assistflow_api.agents import build_agent_runner
 from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
 from assistflow_api.turns import complete_agent_turn, tool_activity_for
+from assistflow_runtime.redaction import redact_text
 
 router = APIRouter()
 
@@ -175,12 +176,13 @@ def post_customer_message(
 ) -> Message:
     settings = request.app.state.settings
     assistant_enabled = isinstance(settings, Settings) and settings.ai_enabled
+    content = redact_text(body.content)
     result = append_customer_message(
         session,
         actor.tenant_id,
         actor.customer_id,
         conversation_id,
-        body.content,
+        content,
         body.idempotency_key,
         _context(actor, correlation),
         acknowledge=not assistant_enabled,
@@ -198,7 +200,7 @@ def post_customer_message(
                 actor.customer_id,
                 conversation_id,
                 result.message.id,
-                body.content,
+                content,
                 body.idempotency_key,
                 _context(actor, correlation),
                 runner,

@@ -33,6 +33,12 @@ TIER3_TOOL_NAMES = frozenset(
     }
 )
 
+
+def is_allowlisted_tool(name: str) -> bool:
+    """True when the name is a tier-0 read the application may execute."""
+    return name in READ_TOOL_NAMES and name not in TIER3_TOOL_NAMES
+
+
 _UNTRUSTED_KEYS = frozenset(
     {
         "tenant_id",

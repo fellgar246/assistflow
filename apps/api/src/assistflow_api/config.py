@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
+_STRENGTHS = {"NONE", "LOW", "MEDIUM", "HIGH"}
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://assistflow:assistflow@localhost:54329/assistflow"
 
@@ -121,6 +122,14 @@ class Settings(BaseModel):
     managed_knowledge_base_id: str = ""
     managed_knowledge_bases: dict[str, str] = Field(default_factory=dict)
     managed_rag_metadata_key: str = ""
+    guardrails_enabled: bool = False
+    guardrail_id: str = ""
+    guardrail_version: str = "DRAFT"
+    guardrail_harmful_content_strength: str = "MEDIUM"
+    guardrail_denied_topic_strength: str = "HIGH"
+    guardrail_sensitive_information_strength: str = "HIGH"
+    guardrail_prompt_attack_strength: str = "HIGH"
+    guardrail_contextual_grounding_threshold: float | None = None
 
 
 def repo_root() -> Path:
@@ -154,6 +163,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     )
     rag_provider = _rag_provider(values.get("RAG_PROVIDER"), defaults.rag_provider)
     ai_enabled = _optional_bool(values, "AI_ENABLED", defaults.ai_enabled)
+    guardrails_enabled = _optional_bool(values, "GUARDRAILS_ENABLED", False)
 
     if local_only:
         aws_enabled = False
@@ -162,6 +172,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         managed_rag_enabled = False
         long_term_memory_enabled = False
         rag_provider = RagProvider.LOCAL
+        guardrails_enabled = False
 
     knowledge_bucket = values.get("KNOWLEDGE_BUCKET", "").strip()
     knowledge_key_prefix = values.get("KNOWLEDGE_KEY_PREFIX", "").strip() or "tenants/{tenant_id}/"
@@ -222,6 +233,24 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         managed_knowledge_base_id=managed_knowledge_base_id,
         managed_knowledge_bases=managed_knowledge_bases,
         managed_rag_metadata_key=managed_rag_metadata_key,
+        guardrails_enabled=guardrails_enabled,
+        guardrail_id=values.get("GUARDRAIL_ID", "").strip(),
+        guardrail_version=values.get("GUARDRAIL_VERSION", "").strip() or "DRAFT",
+        guardrail_harmful_content_strength=_strength(
+            values, "GUARDRAIL_HARMFUL_CONTENT_STRENGTH", "MEDIUM"
+        ),
+        guardrail_denied_topic_strength=_strength(
+            values, "GUARDRAIL_DENIED_TOPIC_STRENGTH", "HIGH"
+        ),
+        guardrail_sensitive_information_strength=_strength(
+            values, "GUARDRAIL_SENSITIVE_INFORMATION_STRENGTH", "HIGH"
+        ),
+        guardrail_prompt_attack_strength=_strength(
+            values, "GUARDRAIL_PROMPT_ATTACK_STRENGTH", "HIGH"
+        ),
+        guardrail_contextual_grounding_threshold=_optional_threshold(
+            values, "GUARDRAIL_CONTEXTUAL_GROUNDING_THRESHOLD"
+        ),
     )
     validate_retrieval_settings(settings)
     return settings
@@ -299,6 +328,29 @@ def _knowledge_bases(raw: str | None) -> dict[str, str]:
         if base.strip() == "":
             raise ValueError("MANAGED_KNOWLEDGE_BASES entries must be tenant_id=knowledge_base_id.")
         parsed[str(tenant_id)] = base.strip()
+    return parsed
+
+
+def _strength(values: Mapping[str, str], name: str, default: str) -> str:
+    raw = values.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    normalized = raw.strip().upper()
+    if normalized not in _STRENGTHS:
+        raise ValueError(f"Invalid strength for {name}. Expected NONE, LOW, MEDIUM, or HIGH.")
+    return normalized
+
+
+def _optional_threshold(values: Mapping[str, str], name: str) -> float | None:
+    raw = values.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        parsed = float(raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"Invalid number for {name}.") from exc
+    if parsed < 0 or parsed > 1:
+        raise ValueError(f"Invalid number for {name}.")
     return parsed
 
 

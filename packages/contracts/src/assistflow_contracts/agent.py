@@ -23,6 +23,7 @@ class StepKind(StrEnum):
     TOOL_PROPOSAL = "tool_proposal"
     TOOL_DENIAL = "tool_denial"
     BUDGET = "budget"
+    GUARDRAIL = "guardrail"
 
 
 class ProviderErrorCode(StrEnum):

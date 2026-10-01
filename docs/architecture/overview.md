@@ -13,7 +13,9 @@ AssistFlow separates a proposal from an authorized change. The model may suggest
 7. The application runs an idempotent command in the business service.
 8. The application records an audit event.
 
-Model text does not mutate orders, shipments, refunds, addresses, or accounts. Retrieved policy prose does not authorize a write by itself.
+Model text does not mutate orders, shipments, refunds, addresses, or accounts. Retrieved policy prose does not authorize a write by itself. The same allowlist applies to the local gateway and the hosted gateway. A document chunk is wrapped before the model sees it, and a verbatim copy of the prompt is not returned to the customer.
+
+Bearer tokens, AWS access-key ids, and card numbers are redacted before they are stored or logged. An optional hosted filter runs only when the hosted model and `GUARDRAILS_ENABLED` are both on. It checks input before the tool loop and checks the reply before it is trusted. If that filter errors, the turn stops. It does not skip the check. A grounding result from that filter does not replace facts that came from tools.
 
 Tool calls cross a gateway boundary. Domain services do not accept a shortcut from prompt text or from a model SDK. A local gateway and a hosted gateway implement the same checks. The local gateway is the default and does not open a network connection. The hosted gateway is created only when the hosted runtime is enabled. The runtime authenticates to it, and the gateway calls the read-tool function with its own role. The tenant id is signed by the application. The model cannot pass it as a trusted argument.
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import structlog
 from assistflow_contracts.agent import (
     AgentResult,
     ExecutedTool,
@@ -12,7 +13,12 @@ from assistflow_contracts.agent import (
     PromptRef,
     TurnContext,
 )
-from assistflow_contracts.conversation import MessageRole, ToolActivity, ToolActivityStatus
+from assistflow_contracts.conversation import (
+    Citation,
+    MessageRole,
+    ToolActivity,
+    ToolActivityStatus,
+)
 from assistflow_conversations.commands import (
     ActorContext,
     append_message,
@@ -38,11 +44,14 @@ from assistflow_runtime import (
     DEFAULT_PROMPT_VERSION,
     bound_history,
 )
+from assistflow_runtime.redaction import REDACTED, redact_text
 from assistflow_tools import (
     LocalToolGateway,
     build_registry,
     service_handlers,
 )
+
+logger = structlog.get_logger("assistflow.turn")
 
 
 def complete_agent_turn(
@@ -86,6 +95,13 @@ def complete_agent_turn(
             actor_type=actor.actor_type,
         )
     )
+    logger.info(
+        "turn_persisted",
+        assistant_message=result.assistant_message,
+        tool_summaries=[item.summary for item in result.executed_tools],
+        trace_summaries=[step.input_summary for step in result.trace.steps],
+    )
+    result = _redacted_result(result)
     executions = _store_handled(
         session,
         tenant_id,
@@ -253,6 +269,44 @@ def _store_outcome(
         actor,
     )
     return record
+
+
+def _redacted_result(result: AgentResult) -> AgentResult:
+    """Copy a turn result with secret-shaped strings removed."""
+    return result.model_copy(
+        update={
+            "assistant_message": _nonempty(redact_text(result.assistant_message)),
+            "executed_tools": [
+                item.model_copy(update={"summary": redact_text(item.summary)[:240]})
+                for item in result.executed_tools
+            ],
+            "trace": result.trace.model_copy(
+                update={
+                    "steps": [
+                        step.model_copy(
+                            update={"input_summary": redact_text(step.input_summary)[:240]}
+                        )
+                        for step in result.trace.steps
+                    ]
+                }
+            ),
+            "citations": [
+                Citation(title=_citation_title(item.title), version=item.version)
+                for item in result.citations
+            ],
+        }
+    )
+
+
+def _nonempty(text: str) -> str:
+    if text.strip() == "":
+        return REDACTED
+    return text
+
+
+def _citation_title(title: str) -> str:
+    cleaned = redact_text(title).strip() or "Document"
+    return cleaned[:200]
 
 
 def _history(
