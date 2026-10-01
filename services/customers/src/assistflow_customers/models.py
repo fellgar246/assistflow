@@ -42,3 +42,20 @@ class CommandIdempotencyRow(Base):
     arguments_hash: Mapped[str] = mapped_column(String(64))
     result_json: Mapped[dict[str, object]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class ToolIdempotencyRow(Base):
+    """One tool write per tenant and client key. The key is not reused across tools."""
+
+    __tablename__ = "tool_idempotency"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_tool_idempotency_tenant_key"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    idempotency_key: Mapped[str] = mapped_column(String(200))
+    tool_name: Mapped[str] = mapped_column(String(80))
+    arguments_hash: Mapped[str] = mapped_column(String(64))
+    result_summary: Mapped[dict[str, object]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)

@@ -10,7 +10,7 @@ from assistflow_customers.paging import RecordPage, apply_keyset, decode_cursor,
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from assistflow_tickets.models import TicketRow
+from assistflow_tickets.models import TicketNoteRow, TicketRow
 
 
 @dataclass(frozen=True)
@@ -127,3 +127,29 @@ class TicketRepository:
         row.status = record.status.value
         row.summary = record.summary
         row.assigned_to = record.assigned_to
+
+
+@dataclass(frozen=True)
+class TicketNoteRecord:
+    id: UUID
+    tenant_id: UUID
+    ticket_id: UUID
+    body: str
+    created_at: datetime
+
+
+class TicketNoteRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def insert(self, record: TicketNoteRecord) -> None:
+        require_tenant_id(record.tenant_id)
+        self._session.add(
+            TicketNoteRow(
+                id=record.id,
+                tenant_id=record.tenant_id,
+                ticket_id=record.ticket_id,
+                body=record.body,
+                created_at=record.created_at,
+            )
+        )

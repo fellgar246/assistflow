@@ -1,12 +1,15 @@
 [project]
 name = "assistflow-tools"
 version = "0.1.0"
-description = "Read-only support tools and the tool registry"
+description = "Support tools and the tool registry"
 requires-python = ">=3.12"
 dependencies = [
     "assistflow-contracts",
+    "assistflow-conversations",
     "assistflow-customers",
     "assistflow-orders",
+    "assistflow-refunds",
+    "assistflow-returns",
     "assistflow-shipping",
     "assistflow-tickets",
     "assistflow-knowledge",
@@ -16,8 +19,11 @@ dependencies = [
 
 [tool.uv.sources]
 assistflow-contracts = { workspace = true }
+assistflow-conversations = { workspace = true }
 assistflow-customers = { workspace = true }
 assistflow-orders = { workspace = true }
+assistflow-refunds = { workspace = true }
+assistflow-returns = { workspace = true }
 assistflow-shipping = { workspace = true }
 assistflow-tickets = { workspace = true }
 assistflow-knowledge = { workspace = true }

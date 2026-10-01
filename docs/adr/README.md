@@ -13,3 +13,4 @@
 | [0009](0009-business-reads-use-the-tool-gateway.md) | Business reads use the tool gateway |
 | [0010](0010-retrieval-provider-is-configuration.md) | The retrieval provider is configuration |
 | [0011](0011-guardrails-fail-closed.md) | Guardrails are optional and fail closed |
+| [0012](0012-idempotent-writes-and-approval-gate.md) | Low-risk writes are idempotent and sensitive writes wait |

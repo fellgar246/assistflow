@@ -5,13 +5,17 @@ description = "Tenant-scoped shipment records and address-change rules"
 requires-python = ">=3.12"
 dependencies = [
     "assistflow-contracts",
+    "assistflow-conversations",
     "assistflow-customers",
+    "assistflow-orders",
     "sqlalchemy>=2",
 ]
 
 [tool.uv.sources]
 assistflow-contracts = { workspace = true }
+assistflow-conversations = { workspace = true }
 assistflow-customers = { workspace = true }
+assistflow-orders = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

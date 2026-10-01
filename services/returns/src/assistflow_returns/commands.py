@@ -5,6 +5,8 @@ from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 from assistflow_contracts.support import RETURN_REASON_CODES, ReturnStatus
+from assistflow_conversations.audit import audit_payload
+from assistflow_conversations.repository import AuditEventRecord, AuditRepository
 from assistflow_customers.errors import SupportError
 from assistflow_customers.hashing import canonical_hash
 from assistflow_customers.repository import IdempotencyRepository, replay_or_conflict
@@ -33,6 +35,10 @@ def create_return_request(
     reason_code: str,
     idempotency_key: str,
     today: date | None = None,
+    *,
+    correlation_id: str = "return",
+    actor_type: str = "application",
+    actor_id: UUID | None = None,
 ) -> ReturnWrite:
     """Record a return when eligibility passes. Replays return the original row."""
     arguments_hash = canonical_hash({"order_number": order_number, "reason_code": reason_code})
@@ -80,6 +86,27 @@ def create_return_request(
         created_at=created_at,
     )
     ReturnRepository(session).insert(record)
+    AuditRepository(session).append(
+        AuditEventRecord(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            correlation_id=correlation_id,
+            actor_type=actor_type,
+            actor_id=order.customer_id if actor_id is None else actor_id,
+            action="return.requested",
+            target_type="return_request",
+            target_id=record.id,
+            payload=audit_payload(
+                {
+                    "return_id": str(record.id),
+                    "order_number": order.order_number,
+                    "reason_code": reason_code,
+                    "status": record.status.value,
+                }
+            ),
+            created_at=created_at,
+        )
+    )
     idempotency.save(
         record_id=uuid4(),
         tenant_id=tenant_id,

@@ -21,6 +21,25 @@ READ_TOOL_NAMES = frozenset(
         "get_customer_profile",
         "get_ticket",
         "search_support_policy",
+        "check_address_change_eligibility",
+        "check_return_eligibility",
+        "check_refund_eligibility",
+    }
+)
+
+TIER1_TOOL_NAMES = frozenset(
+    {
+        "create_ticket",
+        "add_ticket_note",
+        "request_human_escalation",
+    }
+)
+
+TIER2_TOOL_NAMES = frozenset(
+    {
+        "update_shipping_address",
+        "create_return_request",
+        "create_refund_request",
     }
 )
 
@@ -35,14 +54,16 @@ TIER3_TOOL_NAMES = frozenset(
 
 
 def is_allowlisted_tool(name: str) -> bool:
-    """True when the name is a tier-0 read the application may execute."""
-    return name in READ_TOOL_NAMES and name not in TIER3_TOOL_NAMES
+    """True when the application may execute the tool without an approval grant."""
+    executable = READ_TOOL_NAMES | TIER1_TOOL_NAMES
+    return name in executable and name not in TIER3_TOOL_NAMES
 
 
 _UNTRUSTED_KEYS = frozenset(
     {
         "tenant_id",
         "role",
+        "approval",
         "approval_token",
         "actor_type",
         "sql",

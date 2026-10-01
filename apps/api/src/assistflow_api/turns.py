@@ -50,6 +50,7 @@ from assistflow_tools import (
     build_registry,
     service_handlers,
 )
+from assistflow_tools.writes import approved_write_handlers
 
 logger = structlog.get_logger("assistflow.turn")
 
@@ -173,7 +174,7 @@ def build_turn_gateway(
     settings: Settings | None = None,
     retriever: KnowledgeRetriever | None = None,
 ) -> LocalToolGateway:
-    """Bind the local read gateway. The turn supplies the tenant when a tool is called."""
+    """Bind the local gateway. Tier 1 writes are on. Tier 2 mutation stays behind approval."""
     if retriever is None:
         retriever = (
             build_knowledge_retriever(settings, session)
@@ -185,8 +186,9 @@ def build_turn_gateway(
                 score_floor=score_floor,
             )
         )
-    registry = build_registry(service_handlers(session, retriever=retriever))
-    return LocalToolGateway(registry, max_executions=max_tool_calls)
+    handlers = service_handlers(session, retriever=retriever)
+    registry = build_registry(handlers, approved=approved_write_handlers(session))
+    return LocalToolGateway(registry, max_executions=max_tool_calls, writes_enabled=True)
 
 
 def tool_activity_for(

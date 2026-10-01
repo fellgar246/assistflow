@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from assistflow_contracts.support import RefundStatus
+from assistflow_conversations.audit import audit_payload
+from assistflow_conversations.repository import AuditEventRecord, AuditRepository
 from assistflow_customers.errors import SupportError
 from assistflow_customers.hashing import canonical_hash
 from assistflow_customers.repository import IdempotencyRepository, replay_or_conflict
@@ -34,12 +36,18 @@ def create_refund_request(
     amount_cents: int,
     idempotency_key: str,
     return_request_id: UUID | None = None,
+    *,
+    reason_code: str | None = None,
+    correlation_id: str = "refund",
+    actor_type: str = "application",
+    actor_id: UUID | None = None,
 ) -> RefundWrite:
     """Record a refund request inside the eligible maximum. This does not capture a payment."""
     arguments_hash = canonical_hash(
         {
             "order_number": order_number,
             "amount_cents": amount_cents,
+            "reason_code": reason_code,
             "return_request_id": None if return_request_id is None else str(return_request_id),
         }
     )
@@ -92,6 +100,29 @@ def create_refund_request(
         created_at=created_at,
     )
     RefundRepository(session).insert(record)
+    AuditRepository(session).append(
+        AuditEventRecord(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            correlation_id=correlation_id,
+            actor_type=actor_type,
+            actor_id=order.customer_id if actor_id is None else actor_id,
+            action="refund.requested",
+            target_type="refund_request",
+            target_id=record.id,
+            payload=audit_payload(
+                {
+                    "refund_id": str(record.id),
+                    "order_number": order.order_number,
+                    "amount_cents": record.amount_cents,
+                    "currency": record.currency,
+                    "reason_code": reason_code,
+                    "status": record.status.value,
+                }
+            ),
+            created_at=created_at,
+        )
+    )
     idempotency.save(
         record_id=uuid4(),
         tenant_id=tenant_id,

@@ -48,13 +48,17 @@ def service_handlers(
         if retriever is not None
         else LocalKnowledgeRetriever(session, DeterministicEmbedding())
     )
-    return {
+    from assistflow_tools.writes import public_write_handlers
+
+    bound = {
         "get_order": _order_handler(session, clock),
         "get_shipment": _shipment_handler(session, clock),
         "get_customer_profile": _profile_handler(session),
         "get_ticket": _ticket_handler(session),
         "search_support_policy": _policy_handler(search),
     }
+    bound.update(public_write_handlers(session, today=clock))
+    return bound
 
 
 def _order_handler(session: Session, today: date) -> Handler:

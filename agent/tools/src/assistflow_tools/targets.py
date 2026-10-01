@@ -31,8 +31,9 @@ def dispatch_tool_call(
     *,
     expected_token: str,
     context_secret: str,
+    writes_enabled: bool = False,
 ) -> dict[str, Any]:
-    """Authenticate, then run one read. A bad credential never reaches the registry."""
+    """Authenticate, then run one tool. A bad credential never reaches the registry."""
     if not inbound_authorized(event, expected_token):
         return {"ok": False, "error": "unauthorized"}
     raw_actor = _actor_token(event)
@@ -41,7 +42,9 @@ def dispatch_tool_call(
     tool_name = name if isinstance(name, str) and name.strip() else "unknown"
     arguments = event.get("arguments")
     payload = arguments if isinstance(arguments, dict) else {}
-    outcome = LocalToolGateway(registry).call_tool(tool_name, payload, actor)
+    outcome = LocalToolGateway(registry, writes_enabled=writes_enabled).call_tool(
+        tool_name, payload, actor
+    )
     return {"ok": True, "tool": outcome.model_dump(mode="json")}
 
 
@@ -77,6 +80,7 @@ def lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
                 registry,
                 expected_token=expected,
                 context_secret=os.environ.get("AGENTCORE_ACTOR_CONTEXT_SECRET", ""),
+                writes_enabled=True,
             )
     finally:
         engine.dispose()

@@ -63,6 +63,8 @@ X-Customer-Id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001
 
 `X-Correlation-Id` is optional. When it is omitted, the API assigns one and returns it on the response. Audit events for that request store the same id.
 
+Low-risk writes run once for each idempotency key: a ticket, a ticket note, or an escalation. Sending the same key and the same arguments again returns the original result. A sensitive change — shipping address, return, or refund request — is checked for eligibility first. The assistant cannot save that change. Application code has to pass an approval the model cannot supply. A refund request is never marked paid and never stores a payment instrument.
+
 Support reads:
 
 | Method | Path |

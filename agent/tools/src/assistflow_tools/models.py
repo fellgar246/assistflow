@@ -4,6 +4,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
+from assistflow_contracts.support import ShippingAddress, TicketCategory, TicketPriority
 from pydantic import BaseModel, ConfigDict, Field
 
 DEFAULT_TOOL_TIMEOUT_SECONDS = 3.0
@@ -17,6 +18,7 @@ class ToolStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     BLOCKED = "blocked"
+    PENDING_APPROVAL = "pending_approval"
 
 
 class RiskLevel(StrEnum):
@@ -60,6 +62,75 @@ class SearchSupportPolicyArgs(BaseModel):
     query: str = Field(min_length=1, max_length=400)
 
 
+class CheckEligibilityArgs(BaseModel):
+    """Read the fixture decision for one order. This call does not change the order."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: str = Field(min_length=1, max_length=80)
+
+
+class CreateTicketArgs(BaseModel):
+    """Open a support ticket for the signed-in customer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: TicketCategory
+    priority: TicketPriority
+    summary: str = Field(min_length=1, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class AddTicketNoteArgs(BaseModel):
+    """Add a note to a ticket the caller can see."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: UUID
+    body: str = Field(min_length=1, max_length=2000)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class RequestHumanEscalationArgs(BaseModel):
+    """Ask a person to join this conversation. The conversation id comes from the server."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class UpdateShippingAddressArgs(BaseModel):
+    """Propose a new delivery address. The application must approve it before it is saved."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: str = Field(min_length=1, max_length=80)
+    new_address: ShippingAddress
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class CreateReturnRequestArgs(BaseModel):
+    """Propose a return. The application must approve it before a return row is saved."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: str = Field(min_length=1, max_length=80)
+    reason_code: str = Field(min_length=1, max_length=64)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class CreateRefundRequestArgs(BaseModel):
+    """Propose a refund request. This schema has no payment instrument."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: str = Field(min_length=1, max_length=80)
+    amount_cents: int = Field(gt=0)
+    reason_code: str = Field(min_length=1, max_length=64)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
 class ToolContext(BaseModel):
     """Identity taken from the server session. Model arguments cannot replace it."""
 
@@ -99,3 +170,18 @@ class ToolError(Exception):
 class ToolTimeoutError(ToolError):
     def __init__(self) -> None:
         super().__init__("timeout", "The lookup timed out.")
+
+
+class ToolRefusal(ToolError):
+    """A write that stopped before any business row changed."""
+
+    def __init__(
+        self,
+        code: str,
+        summary: str,
+        status: ToolStatus,
+        body: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(code, summary)
+        self.status = status
+        self.body = body

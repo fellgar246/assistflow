@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from assistflow_customers.errors import SupportError, require_tenant_id
-from assistflow_customers.models import CommandIdempotencyRow, CustomerRow
+from assistflow_customers.models import CommandIdempotencyRow, CustomerRow, ToolIdempotencyRow
 from assistflow_customers.paging import RecordPage, apply_keyset, decode_cursor, split_page
 
 
@@ -27,6 +27,13 @@ class CustomerRecord:
 class IdempotencyHit:
     arguments_hash: str
     result_json: dict[str, object]
+
+
+@dataclass(frozen=True)
+class ToolIdempotencyHit:
+    tool_name: str
+    arguments_hash: str
+    result_summary: dict[str, object]
 
 
 def _customer(row: CustomerRow) -> CustomerRecord:
@@ -172,3 +179,53 @@ def replay_or_conflict(hit: IdempotencyHit | None, arguments_hash: str) -> dict[
             409,
         )
     return hit.result_json
+
+
+class ToolIdempotencyRepository:
+    """Replay store for tool writes. Uniqueness is the tenant and the client key."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def find(self, tenant_id: UUID, idempotency_key: str) -> ToolIdempotencyHit | None:
+        tenant_id = require_tenant_id(tenant_id)
+        row = self._session.scalar(
+            select(ToolIdempotencyRow).where(
+                ToolIdempotencyRow.tenant_id == tenant_id,
+                ToolIdempotencyRow.idempotency_key == idempotency_key,
+            )
+        )
+        if row is None:
+            return None
+        result = row.result_summary
+        if not isinstance(result, dict):
+            raise SupportError("internal_error", "Stored tool result is invalid.", 500)
+        return ToolIdempotencyHit(
+            tool_name=row.tool_name,
+            arguments_hash=row.arguments_hash,
+            result_summary=dict(result),
+        )
+
+    def save(
+        self,
+        *,
+        record_id: UUID,
+        tenant_id: UUID,
+        tool_name: str,
+        idempotency_key: str,
+        arguments_hash: str,
+        result_summary: dict[str, object],
+        created_at: datetime,
+    ) -> None:
+        require_tenant_id(tenant_id)
+        self._session.add(
+            ToolIdempotencyRow(
+                id=record_id,
+                tenant_id=tenant_id,
+                tool_name=tool_name,
+                idempotency_key=idempotency_key,
+                arguments_hash=arguments_hash,
+                result_summary=result_summary,
+                created_at=created_at,
+            )
+        )

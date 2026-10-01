@@ -1,4 +1,7 @@
-"""Shared turn loop. The model proposes; this loop validates, runs tier-0 tools, and answers."""
+"""Shared turn loop.
+
+The model proposes. This loop validates, runs allowlisted tools, and answers.
+"""
 
 import json
 import logging
@@ -270,7 +273,7 @@ class AgentLoop:
         proposed: list[ProposedToolCall],
         retrievals: int,
     ) -> tuple[bool, int]:
-        """Execute tier-0 proposals. Return false when a cap stops the turn."""
+        """Execute allowlisted proposals. Tier 2 names are denied here. Return false at a cap."""
         for request in response.requests:
             if len(steps) >= self._limits.max_agent_steps:
                 return False, retrievals

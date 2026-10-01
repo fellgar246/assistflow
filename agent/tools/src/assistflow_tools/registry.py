@@ -1,4 +1,7 @@
-"""Validate a proposed tool call, then run the matching read handler."""
+"""Validate a proposed tool call, then run the matching handler.
+
+Write tools are not retried. Tier 2 mutation is reached only through apply_approved.
+"""
 
 import threading
 from collections.abc import Callable
@@ -6,32 +9,70 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from assistflow_tools.approval import ApplicationApproval
 from assistflow_tools.hashing import arguments_hash
 from assistflow_tools.models import (
     DEFAULT_TOOL_TIMEOUT_SECONDS,
     READ_TIMEOUT_RETRIES,
     SUMMARY_LIMIT,
+    AddTicketNoteArgs,
+    CheckEligibilityArgs,
+    CreateRefundRequestArgs,
+    CreateReturnRequestArgs,
+    CreateTicketArgs,
     GetCustomerProfileArgs,
     GetOrderArgs,
     GetShipmentArgs,
     GetTicketArgs,
+    RequestHumanEscalationArgs,
     RiskLevel,
     SearchSupportPolicyArgs,
     ToolContext,
     ToolError,
     ToolOutcome,
+    ToolRefusal,
     ToolStatus,
     ToolTimeoutError,
+    UpdateShippingAddressArgs,
 )
 
 Handler = Callable[[ToolContext, Any], dict[str, Any]]
 
-_ARGUMENT_MODELS: dict[str, type[BaseModel]] = {
-    "get_order": GetOrderArgs,
-    "get_shipment": GetShipmentArgs,
-    "get_customer_profile": GetCustomerProfileArgs,
-    "get_ticket": GetTicketArgs,
-    "search_support_policy": SearchSupportPolicyArgs,
+
+class _ToolSpec:
+    def __init__(
+        self, argument_model: type[BaseModel], risk_level: RiskLevel, retries: int
+    ) -> None:
+        self.argument_model = argument_model
+        self.risk_level = risk_level
+        self.retries = retries
+
+
+_CATALOG: dict[str, _ToolSpec] = {
+    "get_order": _ToolSpec(GetOrderArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES),
+    "get_shipment": _ToolSpec(GetShipmentArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES),
+    "get_customer_profile": _ToolSpec(
+        GetCustomerProfileArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES
+    ),
+    "get_ticket": _ToolSpec(GetTicketArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES),
+    "search_support_policy": _ToolSpec(
+        SearchSupportPolicyArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES
+    ),
+    "check_address_change_eligibility": _ToolSpec(
+        CheckEligibilityArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES
+    ),
+    "check_return_eligibility": _ToolSpec(
+        CheckEligibilityArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES
+    ),
+    "check_refund_eligibility": _ToolSpec(
+        CheckEligibilityArgs, RiskLevel.TIER0, READ_TIMEOUT_RETRIES
+    ),
+    "create_ticket": _ToolSpec(CreateTicketArgs, RiskLevel.TIER1, 0),
+    "add_ticket_note": _ToolSpec(AddTicketNoteArgs, RiskLevel.TIER1, 0),
+    "request_human_escalation": _ToolSpec(RequestHumanEscalationArgs, RiskLevel.TIER1, 0),
+    "update_shipping_address": _ToolSpec(UpdateShippingAddressArgs, RiskLevel.TIER2, 0),
+    "create_return_request": _ToolSpec(CreateReturnRequestArgs, RiskLevel.TIER2, 0),
+    "create_refund_request": _ToolSpec(CreateRefundRequestArgs, RiskLevel.TIER2, 0),
 }
 
 
@@ -62,8 +103,13 @@ class RegisteredTool:
 class ToolRegistry:
     """Run an allowlisted tool. Unknown names and bad arguments never call a handler."""
 
-    def __init__(self, tools: dict[str, RegisteredTool]) -> None:
+    def __init__(
+        self,
+        tools: dict[str, RegisteredTool],
+        approved: dict[str, Handler] | None = None,
+    ) -> None:
         self._tools = tools
+        self._approved = {} if approved is None else approved
 
     def names(self) -> frozenset[str]:
         return frozenset(self._tools)
@@ -107,27 +153,74 @@ class ToolRegistry:
                 return _blocked(name, digest, "denied", "That profile is not available.")
         return _run(tool, parsed, context, digest)
 
+    def apply_approved(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        context: ToolContext,
+        approval: ApplicationApproval,
+    ) -> ToolOutcome:
+        """Run a tier 2 mutation. The agent loop does not call this method."""
+        digest = arguments_hash(name, arguments)
+        if not isinstance(approval, ApplicationApproval) or not approval.granted:
+            return ToolOutcome(
+                name=name,
+                status=ToolStatus.PENDING_APPROVAL,
+                risk_level=RiskLevel.TIER2,
+                arguments_hash=digest,
+                summary=_clip("This change is waiting for approval."),
+                error_code="pending_approval",
+            )
+        tool = self._tools.get(name)
+        approved = self._approved.get(name)
+        if tool is None or approved is None or tool.risk_level is not RiskLevel.TIER2:
+            return _blocked(name, digest, "tool_denied", "That action is not available.")
+        try:
+            parsed = tool.argument_model.model_validate(arguments)
+        except ValidationError:
+            return _failed(
+                name,
+                RiskLevel.TIER2,
+                digest,
+                "validation_error",
+                "The arguments are invalid.",
+            )
+        granted = RegisteredTool(
+            name,
+            tool.argument_model,
+            approved,
+            risk_level=RiskLevel.TIER2,
+            timeout_seconds=tool.timeout_seconds,
+            timeout_retries=0,
+        )
+        return _run(granted, parsed, context, digest)
+
 
 def build_registry(
     handlers: dict[str, Handler],
     *,
+    approved: dict[str, Handler] | None = None,
     timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
     timeout_retries: int = READ_TIMEOUT_RETRIES,
 ) -> ToolRegistry:
-    """Register the read tools that have a handler."""
+    """Register tools that have a handler. Writes are not retried after a timeout."""
     tools: dict[str, RegisteredTool] = {}
-    for name, model in _ARGUMENT_MODELS.items():
+    for name, spec in _CATALOG.items():
         handler = handlers.get(name)
         if handler is None:
             continue
+        retries = timeout_retries if spec.risk_level is RiskLevel.TIER0 else 0
         tools[name] = RegisteredTool(
             name,
-            model,
+            spec.argument_model,
             handler,
+            risk_level=spec.risk_level,
             timeout_seconds=timeout_seconds,
-            timeout_retries=timeout_retries,
+            timeout_retries=retries,
         )
-    return ToolRegistry(tools)
+    granted = {} if approved is None else approved
+    selected = {name: handler for name, handler in granted.items() if name in tools}
+    return ToolRegistry(tools, selected)
 
 
 def _run(
@@ -141,13 +234,29 @@ def _run(
         except ToolTimeoutError:
             if attempts <= tool.timeout_retries:
                 continue
+            timed_out = (
+                "The lookup timed out."
+                if tool.risk_level is RiskLevel.TIER0
+                else "The request timed out."
+            )
             return _failed(
                 tool.name,
                 tool.risk_level,
                 digest,
                 "timeout",
-                "The lookup timed out.",
+                timed_out,
                 attempts,
+            )
+        except ToolRefusal as exc:
+            return ToolOutcome(
+                name=tool.name,
+                status=exc.status,
+                risk_level=tool.risk_level,
+                arguments_hash=digest,
+                summary=_clip(exc.summary),
+                body=exc.body,
+                error_code=exc.code,
+                attempts=attempts,
             )
         except ToolError as exc:
             status = ToolStatus.BLOCKED if exc.code == "denied" else ToolStatus.FAILED
