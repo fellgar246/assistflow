@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from assistflow_contracts.approval import ApprovalView
 from assistflow_contracts.support import JsonDateTime
 
 
@@ -82,6 +83,7 @@ class Message(BaseModel):
     created_at: JsonDateTime
     citations: list[Citation] = Field(default_factory=list)
     tool_activity: list[ToolActivity] = Field(default_factory=list)
+    approvals: list[ApprovalView] = Field(default_factory=list)
 
 
 class MessagePage(BaseModel):

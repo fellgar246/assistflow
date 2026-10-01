@@ -15,6 +15,7 @@ from assistflow_api.db import create_db_engine
 from assistflow_api.http import register_error_handlers
 from assistflow_api.logging import configure_logging
 from assistflow_api.routes.conversations import router as conversation_router
+from assistflow_api.routes.preferences import router as preference_router
 from assistflow_api.routes.support import router as support_router
 from assistflow_runtime.quota import SessionQuota
 
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             managed_rag_enabled=resolved.managed_rag_enabled,
             rag_provider=resolved.rag_provider.value,
             long_term_memory_enabled=resolved.long_term_memory_enabled,
+            short_term_memory_enabled=resolved.short_term_memory_enabled,
             local_only_mode=resolved.local_only_mode,
         )
         yield
@@ -52,6 +54,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     register_error_handlers(app)
     app.include_router(support_router)
     app.include_router(conversation_router)
+    app.include_router(preference_router)
 
     @app.get("/health", response_model=HealthStatus)
     def health() -> HealthStatus:

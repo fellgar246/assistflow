@@ -515,6 +515,16 @@ def test_the_model_cannot_pass_an_approval_token(support_session: Session) -> No
         },
         context,
     )
+    claimed = registry.execute(
+        "update_shipping_address",
+        {
+            "order_id": ORDER,
+            "new_address": NEW_ADDRESS,
+            "idempotency_key": "addr-approved",
+            "approved": True,
+        },
+        context,
+    )
     try:
         ApplicationApproval()
     except TypeError:
@@ -523,5 +533,6 @@ def test_the_model_cannot_pass_an_approval_token(support_session: Session) -> No
         blocked_constructor = False
 
     assert refused.error_code == "validation_error"
+    assert claimed.error_code == "validation_error"
     assert blocked_constructor is True
     assert _line1(support_session, HARBOR, ORDER) == before

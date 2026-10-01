@@ -14,6 +14,7 @@ PYTHON_PATHS := src tests \
 	../../agent/runtime/src \
 	../../agent/tools/src \
 	../../agent/tools/tests \
+	../../agent/memory/src \
 	../../scripts
 
 UV ?= uv

@@ -92,6 +92,7 @@ class Settings(BaseModel):
     rag_provider: RagProvider
     ai_enabled: bool
     long_term_memory_enabled: bool
+    short_term_memory_enabled: bool = False
     managed_rag_enabled: bool
     local_only_mode: bool
     database_url: str
@@ -112,6 +113,7 @@ class Settings(BaseModel):
     max_bedrock_input_tokens_per_call: int = 6000
     max_bedrock_output_tokens_per_call: int = 800
     max_memory_events_per_session: int = 30
+    agentcore_memory_id: str = ""
     agentcore_runtime_arn: str = ""
     agentcore_invocation_timeout_seconds: float = 30.0
     agentcore_gateway_url: str = ""
@@ -161,6 +163,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     long_term_memory_enabled = _optional_bool(
         values, "LONG_TERM_MEMORY_ENABLED", defaults.long_term_memory_enabled
     )
+    short_term_memory_enabled = _optional_bool(values, "SHORT_TERM_MEMORY_ENABLED", False)
     rag_provider = _rag_provider(values.get("RAG_PROVIDER"), defaults.rag_provider)
     ai_enabled = _optional_bool(values, "AI_ENABLED", defaults.ai_enabled)
     guardrails_enabled = _optional_bool(values, "GUARDRAILS_ENABLED", False)
@@ -197,6 +200,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         rag_provider=rag_provider,
         ai_enabled=ai_enabled,
         long_term_memory_enabled=long_term_memory_enabled,
+        short_term_memory_enabled=short_term_memory_enabled,
         managed_rag_enabled=managed_rag_enabled,
         local_only_mode=local_only,
         database_url=database_url,
@@ -221,6 +225,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             values, "MAX_BEDROCK_OUTPUT_TOKENS_PER_CALL", 800
         ),
         max_memory_events_per_session=_optional_int(values, "MAX_MEMORY_EVENTS_PER_SESSION", 30),
+        agentcore_memory_id=values.get("AGENTCORE_MEMORY_ID", "").strip(),
         agentcore_runtime_arn=values.get("AGENTCORE_RUNTIME_ARN", "").strip(),
         agentcore_invocation_timeout_seconds=_optional_float(
             values, "AGENTCORE_INVOCATION_TIMEOUT_SECONDS", 30.0

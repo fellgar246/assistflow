@@ -12,11 +12,13 @@ def load_models() -> None:
     import assistflow_tickets.models
 
     import assistflow_knowledge.models
+    import assistflow_memory.models
 
     _ = (
         assistflow_conversations.models,
         assistflow_customers.models,
         assistflow_knowledge.models,
+        assistflow_memory.models,
         assistflow_orders.models,
         assistflow_refunds.models,
         assistflow_returns.models,

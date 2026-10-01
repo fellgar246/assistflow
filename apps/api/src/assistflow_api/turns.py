@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
@@ -11,6 +12,7 @@ from assistflow_contracts.agent import (
     ExecutedTool,
     HistoryMessage,
     PromptRef,
+    StopReason,
     TurnContext,
 )
 from assistflow_contracts.conversation import (
@@ -19,6 +21,8 @@ from assistflow_contracts.conversation import (
     ToolActivity,
     ToolActivityStatus,
 )
+from assistflow_contracts.memory import SessionFacts
+from assistflow_conversations.approvals import store_proposal
 from assistflow_conversations.commands import (
     ActorContext,
     append_message,
@@ -28,6 +32,7 @@ from assistflow_conversations.commands import (
 from assistflow_conversations.repository import (
     AgentTraceRecord,
     AgentTraceStepRecord,
+    ApprovalRepository,
     MessageRepository,
     ToolExecutionRecord,
     ToolExecutionRepository,
@@ -39,6 +44,15 @@ from assistflow_api.config import Settings
 from assistflow_api.retrieval import build_knowledge_retriever
 from assistflow_knowledge.embeddings import DeterministicEmbedding
 from assistflow_knowledge.retriever import KnowledgeRetriever, LocalKnowledgeRetriever
+from assistflow_memory import (
+    MEMORY_LIMIT_MESSAGE,
+    MemoryLimitError,
+    MemoryPorts,
+    PreferenceRejected,
+    build_memory_ports,
+    preference_statements,
+)
+from assistflow_memory.facts import remember_tool_facts
 from assistflow_runtime import (
     DEFAULT_PROMPT_ID,
     DEFAULT_PROMPT_VERSION,
@@ -71,9 +85,17 @@ def complete_agent_turn(
     score_floor: float = 0.28,
     settings: Settings | None = None,
     retriever: KnowledgeRetriever | None = None,
+    memory: MemoryPorts | None = None,
 ) -> AgentResult:
     """Ask the runner for a reply, run tier-0 tools, and persist the answer."""
     history = _history(session, tenant_id, conversation_id, customer_message_id)
+    ports = memory_ports_for(settings, session, memory)
+    now = datetime.now(UTC)
+    _remember_preferences(ports, tenant_id, customer_id, customer_message, now)
+    session_memory = _session_facts(ports, tenant_id, customer_id, conversation_id, now)
+    preferences = (
+        [] if ports.preferences is None else ports.preferences.load(tenant_id, customer_id, now)
+    )
     bound = runner.bind(
         build_turn_gateway(
             session,
@@ -94,8 +116,28 @@ def complete_agent_turn(
             history=history,
             prompt=PromptRef(id=DEFAULT_PROMPT_ID, version=DEFAULT_PROMPT_VERSION),
             actor_type=actor.actor_type,
+            session_memory=session_memory,
+            preferences=preferences,
         )
     )
+    if ports.session is not None:
+        try:
+            remember_tool_facts(
+                ports.session,
+                tenant_id,
+                customer_id,
+                conversation_id,
+                result.executed_tools,
+                now,
+            )
+        except MemoryLimitError:
+            result = result.model_copy(
+                update={
+                    "assistant_message": MEMORY_LIMIT_MESSAGE,
+                    "stop_reason": StopReason.FAILED,
+                    "trace": result.trace.model_copy(update={"stop_reason": StopReason.FAILED}),
+                }
+            )
     logger.info(
         "turn_persisted",
         assistant_message=result.assistant_message,
@@ -103,7 +145,7 @@ def complete_agent_turn(
         trace_summaries=[step.input_summary for step in result.trace.steps],
     )
     result = _redacted_result(result)
-    executions = _store_handled(
+    executions, approval_ids = _store_handled(
         session,
         tenant_id,
         customer_id,
@@ -127,6 +169,12 @@ def complete_agent_turn(
         ToolExecutionRepository(session).attach_message(
             tenant_id,
             [record.id for record in executions],
+            written.message.id,
+        )
+    if approval_ids:
+        ApprovalRepository(session).attach_message(
+            tenant_id,
+            approval_ids,
             written.message.id,
         )
     created_at = datetime.now(UTC)
@@ -217,9 +265,39 @@ def _store_handled(
     conversation_id: UUID,
     actor: ActorContext,
     result: AgentResult,
-) -> list[ToolExecutionRecord]:
+) -> tuple[list[ToolExecutionRecord], list[UUID]]:
     stored: list[ToolExecutionRecord] = []
+    approvals: list[UUID] = []
     for index, outcome in enumerate(result.executed_tools):
+        proposal = _proposal_body(outcome)
+        if proposal is not None:
+            change, arguments = proposal
+            saved = store_proposal(
+                session,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                actor=actor,
+                tool_name=outcome.name,
+                arguments=arguments,
+                proposed_change=change,
+                summary=outcome.summary,
+            )
+            if saved.execution.assistant_message_id is None:
+                stored.append(saved.execution)
+            if saved.approval.assistant_message_id is None:
+                approvals.append(saved.approval.id)
+            if not saved.reused:
+                append_message(
+                    session,
+                    tenant_id,
+                    customer_id,
+                    conversation_id,
+                    MessageRole.TOOL,
+                    outcome.summary,
+                    f"tool:{actor.correlation_id}:{index}:{outcome.name}",
+                    actor,
+                )
+            continue
         stored.append(
             _store_outcome(
                 session,
@@ -231,7 +309,17 @@ def _store_handled(
                 index,
             )
         )
-    return stored
+    return stored, approvals
+
+
+def _proposal_body(outcome: ExecutedTool) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    if outcome.status != "pending_approval" or not isinstance(outcome.body, dict):
+        return None
+    change = outcome.body.get("proposed_change")
+    arguments = outcome.body.get("arguments")
+    if not isinstance(change, dict) or not isinstance(arguments, dict):
+        return None
+    return change, arguments
 
 
 def _store_outcome(
@@ -309,6 +397,57 @@ def _nonempty(text: str) -> str:
 def _citation_title(title: str) -> str:
     cleaned = redact_text(title).strip() or "Document"
     return cleaned[:200]
+
+
+def memory_ports_for(
+    settings: Settings | None, session: Session, memory: MemoryPorts | None
+) -> MemoryPorts:
+    """Build adapters only when the caller did not already supply them."""
+    if memory is not None:
+        return memory
+    if settings is None:
+        return MemoryPorts()
+    return build_memory_ports(
+        short_term_enabled=settings.short_term_memory_enabled,
+        long_term_enabled=settings.long_term_memory_enabled,
+        agentcore_enabled=settings.agentcore_enabled,
+        max_events=settings.max_memory_events_per_session,
+        max_session_minutes=settings.max_session_minutes,
+        session=session,
+        region=settings.aws_region,
+        memory_id=settings.agentcore_memory_id,
+    )
+
+
+def _remember_preferences(
+    ports: MemoryPorts,
+    tenant_id: UUID,
+    customer_id: UUID,
+    customer_message: str,
+    now: datetime,
+) -> None:
+    if ports.preferences is None:
+        return
+    for key, value in preference_statements(customer_message):
+        try:
+            ports.preferences.remember(tenant_id, customer_id, key, value, now)
+        except PreferenceRejected:
+            continue
+
+
+def _session_facts(
+    ports: MemoryPorts,
+    tenant_id: UUID,
+    customer_id: UUID,
+    conversation_id: UUID,
+    now: datetime,
+) -> SessionFacts | None:
+    if ports.session is None:
+        return None
+    loaded = ports.session.load(tenant_id, customer_id, conversation_id, now)
+    if loaded.last_order_id or loaded.last_shipment_status:
+        return loaded
+    return None
 
 
 def _history(

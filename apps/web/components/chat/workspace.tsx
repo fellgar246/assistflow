@@ -2,12 +2,14 @@
 
 import {
   ApiError,
+  confirmApproval,
   createConversation,
   listConversations,
   listLocalActors,
   postMessage,
   readConversation,
   readTranscript,
+  rejectApproval,
 } from "@/lib/api/client";
 import { conversationTitle } from "@/lib/chat/format";
 import { StatusBadge } from "@/components/status-badge";
@@ -15,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Composer } from "./composer";
 import { ConversationList } from "./conversation-list";
 import { EmptyThread, ErrorPanel, ListSkeleton } from "./states";
@@ -41,6 +43,10 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
   const queryClient = useQueryClient();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const sendingRef = useRef(false);
+  const decidingRef = useRef(false);
+  const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"confirm" | "reject" | null>(null);
+  const [approvalError, setApprovalError] = useState<{ id: string; message: string } | null>(null);
   const actorId = useSyncExternalStore(subscribeToActor, readActorId, () => null);
 
   const actorsQuery = useQuery({
@@ -115,6 +121,34 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
+
+  async function decide(approvalId: string, action: "confirm" | "reject") {
+    if (!headers || !conversationId || decidingRef.current) {
+      return;
+    }
+    decidingRef.current = true;
+    setBusyApprovalId(approvalId);
+    setPendingAction(action);
+    setApprovalError(null);
+    try {
+      if (action === "confirm") {
+        await confirmApproval(headers, conversationId, approvalId);
+      } else {
+        await rejectApproval(headers, conversationId, approvalId);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["transcript", conversationId] });
+      await queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : "This change could not be confirmed.";
+      setApprovalError({ id: approvalId, message });
+    } finally {
+      decidingRef.current = false;
+      setBusyApprovalId(null);
+      setPendingAction(null);
+    }
+  }
 
   function send(content: string) {
     if (sendingRef.current || sendMutation.isPending || createMutation.isPending) {
@@ -215,12 +249,28 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
           ) : (transcriptQuery.data?.items.length ?? 0) === 0 ? (
             <EmptyThread onSuggest={send} />
           ) : (
-            <Transcript messages={transcriptQuery.data?.items ?? []} />
+            <Transcript
+              messages={transcriptQuery.data?.items ?? []}
+              busyApprovalId={busyApprovalId}
+              pendingAction={pendingAction}
+              approvalError={approvalError}
+              onConfirmApproval={(id) => void decide(id, "confirm")}
+              onCancelApproval={(id) => void decide(id, "reject")}
+              onDismissApprovalError={(id) =>
+                setApprovalError((current) => (current?.id === id ? null : current))
+              }
+              onTalkToPerson={() => send("Please connect me with a person.")}
+            />
           )}
         </div>
         <Composer
           sending={sendMutation.isPending || createMutation.isPending}
           disabled={headers === null || (conversationId !== undefined && threadFailed)}
+          notice={
+            conversationQuery.data?.status === "waiting_approval"
+              ? "Confirm or cancel the pending change above, or keep chatting."
+              : undefined
+          }
           onSend={send}
         />
       </main>

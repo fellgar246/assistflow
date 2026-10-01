@@ -19,6 +19,8 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.rag_provider is RagProvider.LOCAL
     assert settings.ai_enabled is True
     assert settings.long_term_memory_enabled is False
+    assert settings.short_term_memory_enabled is False
+    assert settings.agentcore_memory_id == ""
     assert settings.managed_rag_enabled is False
     assert settings.local_only_mode is False
     assert settings.database_url.endswith("@localhost:54329/assistflow")

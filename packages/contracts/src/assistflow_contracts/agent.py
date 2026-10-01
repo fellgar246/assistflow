@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from assistflow_contracts.conversation import Citation, MessageRole
+from assistflow_contracts.memory import MemoryPreference, SessionFacts
 
 
 class StopReason(StrEnum):
@@ -67,6 +68,8 @@ class TurnContext(BaseModel):
     history: list[HistoryMessage]
     prompt: PromptRef
     actor_type: str = Field(default="customer", min_length=1, max_length=32)
+    session_memory: SessionFacts | None = None
+    preferences: list[MemoryPreference] = Field(default_factory=list)
 
 
 class ProposedToolCall(BaseModel):
@@ -119,7 +122,7 @@ class ScriptedStep(BaseModel):
     kind: StepKind
     summary: str = Field(min_length=1, max_length=240)
     tool_name: str | None = Field(default=None, max_length=80)
-    arguments: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 class ScriptedPlan(BaseModel):

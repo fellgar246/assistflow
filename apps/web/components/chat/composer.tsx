@@ -9,10 +9,11 @@ const SHOW_COUNT_AT = LIMIT * 0.9;
 type ComposerProps = {
   disabled?: boolean;
   sending?: boolean;
+  notice?: string;
   onSend: (content: string) => void;
 };
 
-export function Composer({ disabled = false, sending = false, onSend }: ComposerProps) {
+export function Composer({ disabled = false, sending = false, notice, onSend }: ComposerProps) {
   const labelId = useId();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState("");
@@ -44,6 +45,9 @@ export function Composer({ disabled = false, sending = false, onSend }: Composer
 
   return (
     <form onSubmit={onSubmit} className="border-t border-default bg-surface px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {notice ? (
+        <p className="mx-auto mb-2 max-w-3xl text-xs text-warning">{notice}</p>
+      ) : null}
       <label id={labelId} htmlFor="message" className="sr-only">
         Message
       </label>

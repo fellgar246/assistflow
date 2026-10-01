@@ -5,6 +5,7 @@ from datetime import date
 from typing import NoReturn
 from uuid import UUID
 
+from assistflow_contracts.support import RETURN_REASON_CODES
 from assistflow_conversations.repository import ConversationRepository
 from assistflow_orders.repository import OrderRecord
 from assistflow_refunds.commands import create_refund_request
@@ -242,10 +243,15 @@ def _address_gate(session: Session, today: date) -> Handler:
                 decision.reason_code,
                 "address change",
             )
-        raise ToolRefusal(
-            "pending_approval",
-            "This change is waiting for approval.",
-            ToolStatus.PENDING_APPROVAL,
+        _wait(
+            "update_shipping_address",
+            parsed,
+            {
+                "kind": "address",
+                "order_number": order.order_number,
+                "current": order.shipping_address.model_dump(mode="json"),
+                "proposed": parsed.new_address.model_dump(mode="json"),
+            },
         )
 
     return handle
@@ -274,10 +280,22 @@ def _return_gate(session: Session, today: date) -> Handler:
                 decision.reason_code,
                 "return",
             )
-        raise ToolRefusal(
-            "pending_approval",
-            "This change is waiting for approval.",
-            ToolStatus.PENDING_APPROVAL,
+        if parsed.reason_code not in RETURN_REASON_CODES:
+            audit_denied_write(session, context, "create_return_request", "invalid_reason_code")
+            raise ToolRefusal(
+                "invalid_reason_code",
+                "The return reason code is not allowed.",
+                ToolStatus.BLOCKED,
+            )
+        _wait(
+            "create_return_request",
+            parsed,
+            {
+                "kind": "return",
+                "order_number": order.order_number,
+                "reason_code": parsed.reason_code,
+                "reason_label": _reason_label(parsed.reason_code),
+            },
         )
 
     return handle
@@ -309,10 +327,17 @@ def _refund_gate(session: Session) -> Handler:
                 ToolStatus.BLOCKED,
                 {"eligible": False, "reason_code": "amount_exceeds_maximum"},
             )
-        raise ToolRefusal(
-            "pending_approval",
-            "This change is waiting for approval.",
-            ToolStatus.PENDING_APPROVAL,
+        _wait(
+            "create_refund_request",
+            parsed,
+            {
+                "kind": "refund",
+                "order_number": order.order_number,
+                "amount_cents": parsed.amount_cents,
+                "currency": order.currency,
+                "reason_code": parsed.reason_code,
+                "reason_label": _reason_label(parsed.reason_code),
+            },
         )
 
     return handle
@@ -471,6 +496,31 @@ def _order(session: Session, context: ToolContext, order_id: str) -> OrderRecord
     from assistflow_tools.handlers import _visible_order
 
     return _visible_order(session, context, order_id)
+
+
+_REASON_LABELS = {
+    "damaged": "Damaged",
+    "wrong_item": "Wrong item",
+    "not_as_described": "Not as described",
+    "changed_mind": "Changed mind",
+    "other": "Other",
+}
+
+
+def _reason_label(reason_code: str) -> str:
+    return _REASON_LABELS.get(reason_code, reason_code.replace("_", " ").capitalize())
+
+
+def _wait(tool_name: str, parsed: BaseModel, proposed_change: dict[str, object]) -> NoReturn:
+    dumped = parsed.model_dump(mode="json")
+    if not isinstance(dumped, dict):
+        raise ToolError("internal_error", "The arguments could not be stored.")
+    raise ToolRefusal(
+        "pending_approval",
+        "This change is waiting for approval.",
+        ToolStatus.PENDING_APPROVAL,
+        {"proposed_change": proposed_change, "arguments": dumped},
+    )
 
 
 def _digest(tool_name: str, parsed: BaseModel) -> str:

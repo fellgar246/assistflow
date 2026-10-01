@@ -7,6 +7,7 @@ The hosted runtime client is constructed only when that flag is on.
 from typing import Annotated, Any
 from uuid import UUID
 
+from assistflow_contracts.approval import ApprovalDecision, ApprovalView
 from assistflow_contracts.conversation import (
     Citation,
     Conversation,
@@ -19,6 +20,7 @@ from assistflow_contracts.conversation import (
     OpenConversation,
 )
 from assistflow_contracts.support import Problem
+from assistflow_conversations.approvals import ApprovalFailure, expire_elapsed, reject_approval
 from assistflow_conversations.commands import (
     ActorContext,
     append_customer_message,
@@ -31,10 +33,12 @@ from assistflow_conversations.repository import (
 )
 from assistflow_customers.errors import SupportError
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from assistflow_api.actor import LOCAL_ACTORS, Actor, LocalActorList, require_actor
 from assistflow_api.agents import build_agent_runner
+from assistflow_api.approvals import confirm_stored_approval, present_approval
 from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
 from assistflow_api.turns import complete_agent_turn, tool_activity_for
@@ -238,6 +242,13 @@ def read_transcript(
         limit=page.limit,
     )
     activity = tool_activity_for(session, actor.tenant_id, conversation_id)
+    approvals = _approvals_by_message(
+        session,
+        actor.tenant_id,
+        actor.customer_id,
+        conversation_id,
+        _context(actor, correlation),
+    )
     _stamp(response, correlation)
     visible = [item for item in listed.items if item.role is not MessageRole.TOOL]
     return MessagePage(
@@ -248,6 +259,7 @@ def read_transcript(
                 content=item.content,
                 created_at=item.created_at,
                 tool_activity=activity.get(item.id, []),
+                approvals=approvals.get(item.id, []),
                 citations=[
                     Citation(title=title, version=version) for title, version in item.citations
                 ],
@@ -256,6 +268,91 @@ def read_transcript(
         ],
         next_cursor=listed.next_cursor,
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/approvals/{approval_id}/confirm",
+    response_model=ApprovalView,
+    responses=_ERRORS,
+)
+def confirm_approval(
+    conversation_id: UUID,
+    approval_id: UUID,
+    body: ApprovalDecision,
+    response: Response,
+    actor: DevActor,
+    session: Db,
+    correlation: Correlation,
+) -> ApprovalView | JSONResponse:
+    """Confirm one stored proposal. The body cannot carry a new address."""
+    del body
+    result = confirm_stored_approval(
+        session,
+        actor.tenant_id,
+        actor.customer_id,
+        conversation_id,
+        approval_id,
+        _context(actor, correlation),
+    )
+    _stamp(response, correlation)
+    if isinstance(result, ApprovalFailure):
+        return _failure(result, correlation)
+    return result
+
+
+@router.post(
+    "/conversations/{conversation_id}/approvals/{approval_id}/reject",
+    response_model=ApprovalView,
+    responses=_ERRORS,
+)
+def reject_customer_approval(
+    conversation_id: UUID,
+    approval_id: UUID,
+    body: ApprovalDecision,
+    response: Response,
+    actor: DevActor,
+    session: Db,
+    correlation: Correlation,
+) -> ApprovalView | JSONResponse:
+    """Cancel one stored proposal. Business rows stay unchanged."""
+    del body
+    result = reject_approval(
+        session,
+        actor.tenant_id,
+        actor.customer_id,
+        conversation_id,
+        approval_id,
+        _context(actor, correlation),
+    )
+    _stamp(response, correlation)
+    if isinstance(result, ApprovalFailure):
+        return _failure(result, correlation)
+    return present_approval(result)
+
+
+def _failure(result: ApprovalFailure, correlation: str) -> JSONResponse:
+    denied = JSONResponse(
+        status_code=result.status_code,
+        content={"code": result.code, "message": result.message},
+    )
+    denied.headers["X-Correlation-Id"] = correlation
+    return denied
+
+
+def _approvals_by_message(
+    session: Session,
+    tenant_id: UUID,
+    customer_id: UUID,
+    conversation_id: UUID,
+    actor: ActorContext,
+) -> dict[UUID, list[ApprovalView]]:
+    ConversationRepository(session).require_for_customer(tenant_id, customer_id, conversation_id)
+    grouped: dict[UUID, list[ApprovalView]] = {}
+    for record in expire_elapsed(session, tenant_id, conversation_id, actor):
+        if record.assistant_message_id is None:
+            continue
+        grouped.setdefault(record.assistant_message_id, []).append(present_approval(record))
+    return grouped
 
 
 def require_open_conversation(

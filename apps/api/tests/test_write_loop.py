@@ -138,7 +138,10 @@ def test_the_agent_loop_does_not_mutate_a_sensitive_write(support_engine: Engine
         "create_refund_request",
         "update_shipping_address",
     }
-    assert all(item.status == "blocked" for item in denied)
-    assert all(item.error_code == "tool_denied" for item in denied)
+    assert all(item.status == "pending_approval" for item in denied)
+    assert all(item.error_code == "pending_approval" for item in denied)
+    assert "Please review and confirm" in result.assistant_message
+    assert "nothing has changed yet" in result.assistant_message.lower()
+    assert "updated" not in result.assistant_message.lower()
     assert refunds == 0
     assert address == before

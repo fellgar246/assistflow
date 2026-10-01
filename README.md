@@ -63,7 +63,7 @@ X-Customer-Id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001
 
 `X-Correlation-Id` is optional. When it is omitted, the API assigns one and returns it on the response. Audit events for that request store the same id.
 
-Low-risk writes run once for each idempotency key: a ticket, a ticket note, or an escalation. Sending the same key and the same arguments again returns the original result. A sensitive change — shipping address, return, or refund request — is checked for eligibility first. The assistant cannot save that change. Application code has to pass an approval the model cannot supply. A refund request is never marked paid and never stores a payment instrument.
+Low-risk writes run once for each idempotency key: a ticket, a ticket note, or an escalation. Sending the same key and the same arguments again returns the original result. A sensitive change — shipping address, return, or refund request — is checked for eligibility first. An eligible proposal is saved as a pending approval for 15 minutes and shown in the chat as a diff. Nothing is written until the customer confirms that approval. Confirm and cancel send only the approval id. The server reloads the stored arguments, checks that the approval is still pending and unexpired, and checks the arguments hash again. The business write and the consumed approval commit together. Confirming twice returns the same result and does not write again. Cancelling or letting the approval expire leaves the order unchanged. The model cannot pass an approval flag. A refund request is never marked paid and never stores a payment instrument.
 
 Support reads:
 
@@ -81,6 +81,10 @@ Support reads:
 | GET | `/conversations` |
 | POST | `/conversations/{conversation_id}/messages` |
 | GET | `/conversations/{conversation_id}/messages` |
+| POST | `/conversations/{conversation_id}/approvals/{approval_id}/confirm` |
+| POST | `/conversations/{conversation_id}/approvals/{approval_id}/reject` |
+| GET | `/preferences` |
+| DELETE | `/preferences` |
 
 `POST /conversations/{conversation_id}/messages` stores the customer text. When `AI_ENABLED=true` (the local default), the API runs an in-process assistant and stores its reply plus a trace. That reply asks for an order number or a narrower question. It does not state a delivery date, and it does not call a hosted model. When `AI_ENABLED=false`, the route stores one fixed acknowledgement on the first customer message and does not state an order fact. History sent to the assistant is the newest 20 messages, and older messages are also dropped while a four-characters-per-token estimate exceeds 4000. Older rows stay in the database. `GET /conversations/{conversation_id}` returns one conversation for the current customer. `POST /tickets` may include `conversation_id` when the conversation is open in the same tenant.
 
@@ -147,6 +151,16 @@ Pull-request checks do not run either smoke command.
 Tool allowlisting, argument checks, tenant scope, and redaction run in every environment. Bearer tokens, AWS access-key ids, and card numbers are removed from stored replies, tool summaries, traces, and logs.
 
 `GUARDRAILS_ENABLED=true` adds a hosted filter only when `BEDROCK_ENABLED=true`. The filter checks the customer message before any tool runs and checks the reply before it is stored. A filter error refuses the turn. Set `GUARDRAIL_ID` to the resource that uses the strengths in the environment. An empty id refuses the turn and does not construct a client. Local tests use the no-op filter. Order facts still come from tools when a grounding check is enabled.
+
+## Memory
+
+`SHORT_TERM_MEMORY_ENABLED` defaults to false. When it is on, the conversation keeps the last order id and the last shipment status until `MAX_SESSION_MINUTES`, and it stops after `MAX_MEMORY_EVENTS_PER_SESSION` events. Those facts are not the transcript, and they do not skip the tenant check on a tool.
+
+`LONG_TERM_MEMORY_ENABLED` defaults to false. When it is on, the only stored preferences are preferred language (`en`, `es`) and preferred contact channel (`web`, `email`). Each row has a purpose, an owner, and a retention deadline. `GET /preferences` lists them for the current customer. `DELETE /preferences` removes them. A card number, a password, or any other key is rejected.
+
+A hosted memory client is built only when `AGENTCORE_ENABLED=true` and the matching flag is on. Set `AGENTCORE_MEMORY_ID` for that client. With the hosted runtime off, the same flags use local tables. With both flags off, no memory client is constructed, and an address change still waits for approval.
+
+A fixed set of 10 address follow-ups is compared in [the session-memory note](docs/evaluations/session-memory-follow-ups.md).
 
 ## Quality gates
 

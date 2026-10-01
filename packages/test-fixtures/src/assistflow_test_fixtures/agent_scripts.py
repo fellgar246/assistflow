@@ -6,8 +6,10 @@ which plan to follow. After a tool result exists, the reply uses only those fact
 
 import re
 from typing import Any
+from uuid import uuid4
 
 from assistflow_contracts.agent import ProposedToolCall, ScriptedPlan, ScriptedStep, StepKind
+from assistflow_contracts.memory import ScriptContext
 
 ASK_FOR_ORDER_NUMBER = (
     "Please send the order number from your confirmation. "
@@ -30,12 +32,120 @@ _ORDER_HINTS = ("order", "delivery", "shipment", "tracking", "where is")
 _ORDER_NUMBER = re.compile(r"\bORD-\d+\b", re.IGNORECASE)
 
 
-def select_script(customer_message: str) -> ScriptedPlan:
-    """Pick the order-status plan or the fallback plan from the customer text."""
+def select_script(customer_message: str, context: ScriptContext | None = None) -> ScriptedPlan:
+    """Pick a plan from the customer text. Sensitive plans only propose a change."""
     lowered = customer_message.lower()
+    if _is_address_change(lowered):
+        return address_change_plan(customer_message, context)
+    if _is_refund_request(lowered):
+        return refund_plan(customer_message, context)
+    if _is_return_request(lowered):
+        return return_plan(customer_message, context)
     if any(hint in lowered for hint in _ORDER_HINTS):
-        return order_status_plan(customer_message)
+        return order_status_plan(customer_message, context)
     return policy_plan(customer_message)
+
+
+def address_change_plan(
+    customer_message: str, context: ScriptContext | None = None
+) -> ScriptedPlan:
+    """Propose one address change. The reply does not claim it already happened."""
+    steps = [ScriptedStep(kind=StepKind.MODEL, summary="address change request")]
+    order_number = resolve_order_number(customer_message, context)
+    if order_number is None:
+        return ScriptedPlan(
+            assistant_message=(
+                "Please send the order number for the delivery address you want to change. "
+                "Nothing has changed yet."
+            ),
+            steps=steps,
+        )
+    steps.append(
+        ScriptedStep(
+            kind=StepKind.TOOL_PROPOSAL,
+            summary="proposed update_shipping_address",
+            tool_name="update_shipping_address",
+            arguments={
+                "order_id": order_number,
+                "new_address": _proposed_address(customer_message),
+                "idempotency_key": f"address:{order_number}:{uuid4()}",
+            },
+        )
+    )
+    return ScriptedPlan(
+        assistant_message=(
+            f"Here is the delivery address change I can make for {order_number}. "
+            "Please review and confirm. Nothing has changed yet."
+        ),
+        steps=steps,
+    )
+
+
+def return_plan(customer_message: str, context: ScriptContext | None = None) -> ScriptedPlan:
+    """Propose a return. The application still has to confirm it."""
+    steps = [ScriptedStep(kind=StepKind.MODEL, summary="return request")]
+    order_number = resolve_order_number(customer_message, context)
+    if order_number is None:
+        return ScriptedPlan(
+            assistant_message=(
+                "Please send the order number you want to return. Nothing has changed yet."
+            ),
+            steps=steps,
+        )
+    steps.append(
+        ScriptedStep(
+            kind=StepKind.TOOL_PROPOSAL,
+            summary="proposed create_return_request",
+            tool_name="create_return_request",
+            arguments={
+                "order_id": order_number,
+                "reason_code": _reason_code(customer_message),
+                "idempotency_key": f"return:{order_number}:{uuid4()}",
+            },
+        )
+    )
+    return ScriptedPlan(
+        assistant_message=(
+            f"Here is the return I can start for {order_number}. "
+            "Please review and confirm. Nothing has changed yet."
+        ),
+        steps=steps,
+    )
+
+
+def refund_plan(customer_message: str, context: ScriptContext | None = None) -> ScriptedPlan:
+    """Propose a refund request. The amount is not a payment."""
+    steps = [ScriptedStep(kind=StepKind.MODEL, summary="refund request")]
+    order_number = resolve_order_number(customer_message, context)
+    if order_number is None:
+        return ScriptedPlan(
+            assistant_message=(
+                "Please send the order number for the refund request. "
+                "This is a request, not a payment, and nothing has changed yet."
+            ),
+            steps=steps,
+        )
+    steps.append(
+        ScriptedStep(
+            kind=StepKind.TOOL_PROPOSAL,
+            summary="proposed create_refund_request",
+            tool_name="create_refund_request",
+            arguments={
+                "order_id": order_number,
+                "amount_cents": _amount_cents(customer_message),
+                "reason_code": _reason_code(customer_message),
+                "idempotency_key": f"refund:{order_number}:{uuid4()}",
+            },
+        )
+    )
+    return ScriptedPlan(
+        assistant_message=(
+            f"Here is the refund request I can submit for {order_number}. "
+            "Please review and confirm. This is a request, not a payment, "
+            "and nothing has changed yet."
+        ),
+        steps=steps,
+    )
 
 
 def policy_plan(customer_message: str) -> ScriptedPlan:
@@ -55,12 +165,11 @@ def policy_plan(customer_message: str) -> ScriptedPlan:
     )
 
 
-def order_status_plan(customer_message: str) -> ScriptedPlan:
+def order_status_plan(customer_message: str, context: ScriptContext | None = None) -> ScriptedPlan:
     steps = [ScriptedStep(kind=StepKind.MODEL, summary="order status request")]
-    found = _ORDER_NUMBER.search(customer_message)
-    if found is None:
+    order_number = resolve_order_number(customer_message, context)
+    if order_number is None:
         return ScriptedPlan(assistant_message=ASK_FOR_ORDER_NUMBER, steps=steps)
-    order_number = found.group(0).upper()
     steps.append(
         ScriptedStep(
             kind=StepKind.TOOL_PROPOSAL,
@@ -109,9 +218,7 @@ def reply_from_tools(outcomes: list[dict[str, Any]]) -> str:
     sentences: list[str] = []
     if isinstance(order, dict):
         sentences.append(f"Order {order.get('order_id')} is {order.get('status')}.")
-        sentences.append(
-            f"The total is {order.get('total_cents')} {order.get('currency')}."
-        )
+        sentences.append(f"The total is {order.get('total_cents')} {order.get('currency')}.")
         sentences.append(
             f"It ships to {order.get('shipping_city')}, {order.get('shipping_country')}."
         )
@@ -133,12 +240,77 @@ def reply_from_tools(outcomes: list[dict[str, Any]]) -> str:
     if sentences:
         return " ".join(sentences)
     if any(item.get("error_code") == "not_found" for item in outcomes):
-        return (
-            "I could not find that record. I have not confirmed a delivery date or location."
-        )
+        return "I could not find that record. I have not confirmed a delivery date or location."
     if any(item.get("status") == "blocked" for item in outcomes):
         return "I cannot complete that lookup. Please narrow the request, or wait for a person."
     return "I could not complete that lookup. Please try again, or wait for a person."
+
+
+def _is_address_change(text: str) -> bool:
+    return "address" in text and any(word in text for word in ("change", "update", "move"))
+
+
+def _is_refund_request(text: str) -> bool:
+    return "policy" not in text and "refund" in text
+
+
+def _is_return_request(text: str) -> bool:
+    if "policy" in text or not re.search(r"\breturn\b", text):
+        return False
+    return any(word in text for word in ("start", "request", "want", "open"))
+
+
+def resolve_order_number(customer_message: str, context: ScriptContext | None = None) -> str | None:
+    """Prefer the message, then session memory, then the bounded history window."""
+    explicit = _order_number(customer_message)
+    if explicit is not None:
+        return explicit
+    if context is not None:
+        remembered = _order_number(context.last_order_id or "")
+        if remembered is not None:
+            return remembered
+        for text in reversed(context.history):
+            found = _order_number(text)
+            if found is not None:
+                return found
+    return None
+
+
+def _order_number(customer_message: str) -> str | None:
+    found = _ORDER_NUMBER.search(customer_message)
+    if found is None:
+        return None
+    return found.group(0).upper()
+
+
+def _proposed_address(customer_message: str) -> dict[str, str]:
+    address = {
+        "recipient": "Ava Chen",
+        "line1": "42 Congress Avenue",
+        "city": "Austin",
+        "region": "TX",
+        "postal_code": "78701",
+        "country": "US",
+    }
+    for key in ("recipient", "line1", "line2", "city", "region", "postal_code", "country"):
+        match = re.search(rf"(?im)^{key}\s*:\s*(.+)$", customer_message)
+        if match is not None and match.group(1).strip() != "":
+            address[key] = match.group(1).strip()
+    return address
+
+
+def _reason_code(customer_message: str) -> str:
+    match = re.search(r"(?im)^reason(?:_code)?\s*:\s*([a-z_]+)\s*$", customer_message)
+    if match is None:
+        return "damaged"
+    return match.group(1)
+
+
+def _amount_cents(customer_message: str) -> int:
+    match = re.search(r"(?im)^amount_cents\s*:\s*(\d+)\s*$", customer_message)
+    if match is None:
+        return 1500
+    return int(match.group(1))
 
 
 def _succeeded(outcomes: list[dict[str, Any]], name: str) -> dict[str, Any] | None:

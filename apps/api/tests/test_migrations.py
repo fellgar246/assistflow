@@ -40,6 +40,9 @@ def test_support_migration_applies_and_downgrades(
         "knowledge_chunks",
         "tool_idempotency",
         "ticket_notes",
+        "approval_requests",
+        "session_memory_events",
+        "memory_preferences",
     } <= names
     columns = {column["name"] for column in inspect(engine).get_columns("orders")}
     assert "tenant_id" in columns

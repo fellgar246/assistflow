@@ -12,6 +12,7 @@ package = false
 members = [
     "agent/runtime",
     "agent/tools",
+    "agent/memory",
     "apps/api",
     "packages/contracts",
     "packages/test-fixtures",
@@ -28,7 +29,7 @@ members = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["services", "packages", "apps/api/src", "apps/api/tests", "agent/runtime/src", "agent/tools/src", "agent/tools/tests", "services/knowledge/src"]
+src = ["services", "packages", "apps/api/src", "apps/api/tests", "agent/runtime/src", "agent/tools/src", "agent/tools/tests", "agent/memory/src", "services/knowledge/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

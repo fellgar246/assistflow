@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from assistflow_contracts.approval import ApprovalStatus
 from assistflow_contracts.conversation import ConversationChannel, ConversationStatus, MessageRole
 from assistflow_customers.errors import SupportError, require_tenant_id
 from assistflow_customers.paging import RecordPage, apply_keyset, decode_cursor, split_page
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from assistflow_conversations.models import (
     AgentTraceRow,
     AgentTraceStepRow,
+    ApprovalRequestRow,
     AuditEventRow,
     ConversationRow,
     MessageRow,
@@ -513,6 +515,179 @@ class ToolExecutionRepository:
             .order_by(ToolExecutionRow.started_at, ToolExecutionRow.id)
         )
         return [_tool_execution(row) for row in rows]
+
+    def get(self, tenant_id: UUID, execution_id: UUID) -> ToolExecutionRecord | None:
+        tenant_id = require_tenant_id(tenant_id)
+        row = self._session.get(ToolExecutionRow, execution_id)
+        if row is None or row.tenant_id != tenant_id:
+            return None
+        return _tool_execution(row)
+
+    def finish(
+        self,
+        tenant_id: UUID,
+        execution_id: UUID,
+        *,
+        status: str,
+        summary: str,
+        finished_at: datetime,
+    ) -> None:
+        tenant_id = require_tenant_id(tenant_id)
+        row = self._session.get(ToolExecutionRow, execution_id)
+        if row is None or row.tenant_id != tenant_id:
+            raise SupportError("tool_execution_not_found", "That tool call was not found.", 404)
+        row.status = status
+        row.result_summary = summary[:240]
+        row.finished_at = finished_at
+
+
+@dataclass(frozen=True)
+class ApprovalRecord:
+    id: UUID
+    tenant_id: UUID
+    conversation_id: UUID
+    tool_execution_id: UUID
+    assistant_message_id: UUID | None
+    action_type: str
+    proposed_change: dict[str, object]
+    arguments: dict[str, object]
+    arguments_hash: str
+    status: ApprovalStatus
+    requested_at: datetime
+    approved_at: datetime | None
+    approved_by: UUID | None
+    expires_at: datetime
+    idempotency_key: str
+
+
+def _approval(row: ApprovalRequestRow) -> ApprovalRecord:
+    change = row.proposed_change if isinstance(row.proposed_change, dict) else {}
+    arguments = row.arguments if isinstance(row.arguments, dict) else {}
+    return ApprovalRecord(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        conversation_id=row.conversation_id,
+        tool_execution_id=row.tool_execution_id,
+        assistant_message_id=row.assistant_message_id,
+        action_type=row.action_type,
+        proposed_change=dict(change),
+        arguments=dict(arguments),
+        arguments_hash=row.arguments_hash,
+        status=ApprovalStatus(row.status),
+        requested_at=row.requested_at,
+        approved_at=row.approved_at,
+        approved_by=row.approved_by,
+        expires_at=row.expires_at,
+        idempotency_key=row.idempotency_key,
+    )
+
+
+class ApprovalRepository:
+    """Approvals are stored and read with an explicit tenant scope."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def insert(self, record: ApprovalRecord) -> None:
+        require_tenant_id(record.tenant_id)
+        ConversationRepository(self._session).require(record.tenant_id, record.conversation_id)
+        self._session.add(
+            ApprovalRequestRow(
+                id=record.id,
+                tenant_id=record.tenant_id,
+                conversation_id=record.conversation_id,
+                tool_execution_id=record.tool_execution_id,
+                assistant_message_id=record.assistant_message_id,
+                action_type=record.action_type,
+                proposed_change=record.proposed_change,
+                arguments=record.arguments,
+                arguments_hash=record.arguments_hash,
+                status=record.status.value,
+                requested_at=record.requested_at,
+                approved_at=record.approved_at,
+                approved_by=record.approved_by,
+                expires_at=record.expires_at,
+                idempotency_key=record.idempotency_key,
+            )
+        )
+
+    def find_by_key(self, tenant_id: UUID, idempotency_key: str) -> ApprovalRecord | None:
+        tenant_id = require_tenant_id(tenant_id)
+        row = self._session.scalar(
+            select(ApprovalRequestRow).where(
+                ApprovalRequestRow.tenant_id == tenant_id,
+                ApprovalRequestRow.idempotency_key == idempotency_key,
+            )
+        )
+        return None if row is None else _approval(row)
+
+    def get_for_conversation(
+        self, tenant_id: UUID, conversation_id: UUID, approval_id: UUID
+    ) -> ApprovalRecord | None:
+        tenant_id = require_tenant_id(tenant_id)
+        row = self._session.scalar(
+            select(ApprovalRequestRow).where(
+                ApprovalRequestRow.tenant_id == tenant_id,
+                ApprovalRequestRow.conversation_id == conversation_id,
+                ApprovalRequestRow.id == approval_id,
+            )
+        )
+        return None if row is None else _approval(row)
+
+    def require_for_conversation(
+        self, tenant_id: UUID, conversation_id: UUID, approval_id: UUID
+    ) -> ApprovalRecord:
+        found = self.get_for_conversation(tenant_id, conversation_id, approval_id)
+        if found is None:
+            raise SupportError("approval_not_found", "That confirmation was not found.", 404)
+        return found
+
+    def list_for_conversation(self, tenant_id: UUID, conversation_id: UUID) -> list[ApprovalRecord]:
+        tenant_id = require_tenant_id(tenant_id)
+        ConversationRepository(self._session).require(tenant_id, conversation_id)
+        rows = self._session.scalars(
+            select(ApprovalRequestRow)
+            .where(
+                ApprovalRequestRow.tenant_id == tenant_id,
+                ApprovalRequestRow.conversation_id == conversation_id,
+            )
+            .order_by(ApprovalRequestRow.requested_at, ApprovalRequestRow.id)
+        )
+        return [_approval(row) for row in rows]
+
+    def attach_message(self, tenant_id: UUID, approval_ids: list[UUID], message_id: UUID) -> None:
+        tenant_id = require_tenant_id(tenant_id)
+        if not approval_ids:
+            return
+        rows = self._session.scalars(
+            select(ApprovalRequestRow).where(
+                ApprovalRequestRow.tenant_id == tenant_id,
+                ApprovalRequestRow.id.in_(approval_ids),
+            )
+        )
+        for row in rows:
+            if row.assistant_message_id is None:
+                row.assistant_message_id = message_id
+
+    def save_status(
+        self,
+        record: ApprovalRecord,
+        *,
+        status: ApprovalStatus,
+        approved_at: datetime | None = None,
+        approved_by: UUID | None = None,
+    ) -> ApprovalRecord:
+        require_tenant_id(record.tenant_id)
+        row = self._session.get(ApprovalRequestRow, record.id)
+        if row is None or row.tenant_id != record.tenant_id:
+            raise SupportError("approval_not_found", "That confirmation was not found.", 404)
+        row.status = status.value
+        if approved_at is not None:
+            row.approved_at = approved_at
+        if approved_by is not None:
+            row.approved_by = approved_by
+        self._session.flush()
+        return _approval(row)
 
 
 class AuditRepository:

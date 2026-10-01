@@ -31,7 +31,13 @@ from assistflow_contracts.agent import (
     Usage,
 )
 from assistflow_contracts.conversation import Citation
-from assistflow_contracts.gateway import GatewayActor, is_allowlisted_tool
+from assistflow_contracts.gateway import TIER3_TOOL_NAMES, GatewayActor
+from assistflow_contracts.memory import (
+    PREFERENCE_MEMORY_CHANNEL,
+    SESSION_MEMORY_CHANNEL,
+    MemoryPreference,
+    SessionFacts,
+)
 
 from assistflow_runtime.gateway import ToolGateway
 from assistflow_runtime.guardrails import (
@@ -108,7 +114,12 @@ class AgentLoop:
         prompt = self._prompts.get(turn_context.prompt.id, turn_context.prompt.version)
         if prompt.text.strip() == "":
             raise ValueError("Prompt text is empty.")
-        messages = _messages(turn_context.history, turn_context.customer_message)
+        messages = _messages(
+            turn_context.history,
+            turn_context.customer_message,
+            turn_context.session_memory,
+            turn_context.preferences,
+        )
         if _customer_alone_exceeds(messages, self._limits.max_input_tokens):
             return self._finish(
                 turn_context.prompt,
@@ -130,7 +141,7 @@ class AgentLoop:
         provider = "mock"
         model_id = "mock"
         actor = _actor(turn_context)
-        schemas = [item for item in self._gateway.list_tools() if is_allowlisted_tool(item.name)]
+        schemas = [item for item in self._gateway.list_tools() if item.name not in TIER3_TOOL_NAMES]
         allowed = {item.name for item in schemas}
         decision, model_calls = self._screen(
             "input", turn_context.customer_message, model_calls, steps
@@ -147,7 +158,12 @@ class AgentLoop:
                 steps,
             )
         if decision.action is GuardrailAction.REDACT and decision.text.strip():
-            messages = _messages(turn_context.history, decision.text)
+            messages = _messages(
+                turn_context.history,
+                decision.text,
+                turn_context.session_memory,
+                turn_context.preferences,
+            )
 
         while True:
             if len(steps) >= self._limits.max_agent_steps or (
@@ -209,6 +225,18 @@ class AgentLoop:
                     proposed,
                     retrievals,
                 )
+                if any(item.status == "pending_approval" for item in executed):
+                    return self._finish(
+                        turn_context.prompt,
+                        _proposal_message(executed),
+                        StopReason.COMPLETED,
+                        steps,
+                        executed,
+                        Usage(input_tokens=input_tokens, output_tokens=output_tokens),
+                        provider,
+                        model_id,
+                        proposed,
+                    )
                 if not applied:
                     return self._budget(
                         turn_context.prompt,
@@ -273,7 +301,7 @@ class AgentLoop:
         proposed: list[ProposedToolCall],
         retrievals: int,
     ) -> tuple[bool, int]:
-        """Execute allowlisted proposals. Tier 2 names are denied here. Return false at a cap."""
+        """Execute listed proposals. A tier 2 call waits for approval. Return false at a cap."""
         for request in response.requests:
             if len(steps) >= self._limits.max_agent_steps:
                 return False, retrievals
@@ -486,6 +514,41 @@ class AgentLoop:
         )
 
 
+def _proposal_message(executed: list[ExecutedTool]) -> str:
+    """Name the pending action. Do not claim the change already happened."""
+    pending = [item for item in executed if item.status == "pending_approval"]
+    item = pending[0]
+    change = _proposed_change(item)
+    order = change.get("order_number")
+    target = f" for {order}" if isinstance(order, str) and order else ""
+    kind = change.get("kind")
+    if kind == "address" or item.name == "update_shipping_address":
+        return (
+            f"Here is the delivery address change I can make{target}. "
+            "Please review and confirm. Nothing has changed yet."
+        )
+    if kind == "return" or item.name == "create_return_request":
+        return (
+            f"Here is the return I can start{target}. "
+            "Please review and confirm. Nothing has changed yet."
+        )
+    if kind == "refund" or item.name == "create_refund_request":
+        return (
+            f"Here is the refund request I can submit{target}. "
+            "Please review and confirm. This is a request, not a payment, "
+            "and nothing has changed yet."
+        )
+    return "Here is the change I can make. Please review and confirm. Nothing has changed yet."
+
+
+def _proposed_change(item: ExecutedTool) -> dict[str, Any]:
+    body = item.body if isinstance(item.body, dict) else {}
+    change = body.get("proposed_change")
+    if isinstance(change, dict):
+        return change
+    return {}
+
+
 def _actor(turn_context: TurnContext) -> GatewayActor:
     return GatewayActor(
         tenant_id=turn_context.tenant_id,
@@ -496,7 +559,13 @@ def _actor(turn_context: TurnContext) -> GatewayActor:
     )
 
 
-def _messages(history: list[HistoryMessage], customer_message: str) -> list[ModelMessage]:
+def _messages(
+    history: list[HistoryMessage],
+    customer_message: str,
+    session_memory: SessionFacts | None = None,
+    preferences: list[MemoryPreference] | None = None,
+) -> list[ModelMessage]:
+    """History stays the transcript. Session facts and preferences are separate data."""
     stored = [
         ModelMessage(
             role=ModelMessageRole.ASSISTANT
@@ -506,6 +575,24 @@ def _messages(history: list[HistoryMessage], customer_message: str) -> list[Mode
         )
         for item in history
     ]
+    if session_memory is not None and (
+        session_memory.last_order_id or session_memory.last_shipment_status
+    ):
+        stored.append(
+            ModelMessage(
+                role=ModelMessageRole.USER,
+                content=session_memory.model_dump_json(),
+                tool_name=SESSION_MEMORY_CHANNEL,
+            )
+        )
+    if preferences:
+        stored.append(
+            ModelMessage(
+                role=ModelMessageRole.USER,
+                content=json.dumps([item.model_dump(mode="json") for item in preferences]),
+                tool_name=PREFERENCE_MEMORY_CHANNEL,
+            )
+        )
     stored.append(ModelMessage(role=ModelMessageRole.USER, content=customer_message))
     return stored
 

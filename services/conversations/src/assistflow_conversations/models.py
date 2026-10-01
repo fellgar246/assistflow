@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from assistflow_customers.db import Base, UtcDateTime
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, Uuid
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -144,3 +144,44 @@ class ToolExecutionRow(Base):
     started_at: Mapped[datetime] = mapped_column(UtcDateTime)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     result_summary: Mapped[str] = mapped_column(String(240))
+
+
+class ApprovalRequestRow(Base):
+    """One customer decision for a sensitive change.
+
+    The id is random. Arguments stay here so confirm cannot supply a new payload.
+    """
+
+    __tablename__ = "approval_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_approval_requests_tenant_key",
+        ),
+        Index(
+            "ix_approval_requests_tenant_conversation",
+            "tenant_id",
+            "conversation_id",
+            "requested_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    conversation_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("conversations.id"))
+    tool_execution_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tool_executions.id"))
+    assistant_message_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("messages.id"), nullable=True
+    )
+    action_type: Mapped[str] = mapped_column(String(80))
+    proposed_change: Mapped[dict[str, object]] = mapped_column(JSON)
+    arguments: Mapped[dict[str, object]] = mapped_column(JSON)
+    arguments_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32))
+    requested_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    approved_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    approved_by: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    idempotency_key: Mapped[str] = mapped_column(String(200))

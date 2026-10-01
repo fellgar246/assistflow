@@ -2,6 +2,7 @@
 
 import type { Message } from "@/lib/api/schemas";
 import { absoluteTime, dayLabel, relativeTime } from "@/lib/chat/format";
+import { ApprovalCard } from "./approval-card";
 import { Citations } from "./citations";
 import { ToolActivityRow } from "./tool-activity";
 
@@ -9,6 +10,13 @@ const GROUP_WINDOW_MS = 2 * 60_000;
 
 type TranscriptProps = {
   messages: Message[];
+  busyApprovalId?: string | null;
+  pendingAction?: "confirm" | "reject" | null;
+  approvalError?: { id: string; message: string } | null;
+  onConfirmApproval?: (approvalId: string) => void;
+  onCancelApproval?: (approvalId: string) => void;
+  onDismissApprovalError?: (approvalId: string) => void;
+  onTalkToPerson?: () => void;
 };
 
 function sameGroup(previous: Message | undefined, current: Message): boolean {
@@ -18,7 +26,16 @@ function sameGroup(previous: Message | undefined, current: Message): boolean {
   return new Date(current.created_at).getTime() - new Date(previous.created_at).getTime() <= GROUP_WINDOW_MS;
 }
 
-export function Transcript({ messages }: TranscriptProps) {
+export function Transcript({
+  messages,
+  busyApprovalId = null,
+  pendingAction = null,
+  approvalError = null,
+  onConfirmApproval,
+  onCancelApproval,
+  onDismissApprovalError,
+  onTalkToPerson,
+}: TranscriptProps) {
   return (
     <div
       role="log"
@@ -38,7 +55,17 @@ export function Transcript({ messages }: TranscriptProps) {
             {showDay ? (
               <p className="mb-4 text-center text-xs text-muted">{dayLabel(new Date(message.created_at))}</p>
             ) : null}
-            <MessageView message={message} showLabel={!grouped} />
+            <MessageView
+              message={message}
+              showLabel={!grouped}
+              busyApprovalId={busyApprovalId}
+              pendingAction={pendingAction}
+              approvalError={approvalError}
+              onConfirmApproval={onConfirmApproval}
+              onCancelApproval={onCancelApproval}
+              onDismissApprovalError={onDismissApprovalError}
+              onTalkToPerson={onTalkToPerson}
+            />
           </div>
         );
       })}
@@ -46,7 +73,27 @@ export function Transcript({ messages }: TranscriptProps) {
   );
 }
 
-function MessageView({ message, showLabel }: { message: Message; showLabel: boolean }) {
+function MessageView({
+  message,
+  showLabel,
+  busyApprovalId,
+  pendingAction,
+  approvalError,
+  onConfirmApproval,
+  onCancelApproval,
+  onDismissApprovalError,
+  onTalkToPerson,
+}: {
+  message: Message;
+  showLabel: boolean;
+  busyApprovalId: string | null;
+  pendingAction: "confirm" | "reject" | null;
+  approvalError: { id: string; message: string } | null;
+  onConfirmApproval?: (approvalId: string) => void;
+  onCancelApproval?: (approvalId: string) => void;
+  onDismissApprovalError?: (approvalId: string) => void;
+  onTalkToPerson?: () => void;
+}) {
   if (message.role === "system") {
     return (
       <p className="text-center text-xs text-muted">
@@ -85,6 +132,19 @@ function MessageView({ message, showLabel }: { message: Message; showLabel: bool
       ) : null}
       <ToolActivityRow items={message.tool_activity} />
       <p className="text-[15px] leading-6 break-words text-text">{message.content}</p>
+      {message.approvals.map((approval) => (
+        <ApprovalCard
+          key={approval.id}
+          approval={approval}
+          submitting={busyApprovalId === approval.id}
+          pendingAction={busyApprovalId === approval.id ? pendingAction : null}
+          error={approvalError?.id === approval.id ? approvalError.message : null}
+          onConfirm={(id) => onConfirmApproval?.(id)}
+          onCancel={(id) => onCancelApproval?.(id)}
+          onDismissError={onDismissApprovalError}
+          onTalkToPerson={onTalkToPerson}
+        />
+      ))}
       <Citations citations={message.citations} />
       <time
         dateTime={message.created_at}

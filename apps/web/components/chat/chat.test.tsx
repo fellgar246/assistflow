@@ -14,6 +14,7 @@ const message = (overrides: Partial<Message> = {}): Message => ({
   created_at: "2026-09-23T18:00:00Z",
   citations: [],
   tool_activity: [],
+  approvals: [],
   ...overrides,
 });
 

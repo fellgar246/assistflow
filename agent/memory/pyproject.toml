@@ -1,0 +1,20 @@
+[project]
+name = "assistflow-memory"
+version = "0.1.0"
+description = "Session facts and narrow customer preferences"
+requires-python = ">=3.12"
+dependencies = [
+    "assistflow-contracts",
+    "assistflow-customers",
+    "assistflow-runtime",
+    "sqlalchemy>=2",
+]
+
+[tool.uv.sources]
+assistflow-contracts = { workspace = true }
+assistflow-customers = { workspace = true }
+assistflow-runtime = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

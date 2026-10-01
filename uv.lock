@@ -14,6 +14,7 @@ members = [
     "assistflow-conversations",
     "assistflow-customers",
     "assistflow-knowledge",
+    "assistflow-memory",
     "assistflow-orders",
     "assistflow-refunds",
     "assistflow-returns",
@@ -84,6 +85,7 @@ dependencies = [
     { name = "assistflow-conversations" },
     { name = "assistflow-customers" },
     { name = "assistflow-knowledge" },
+    { name = "assistflow-memory" },
     { name = "assistflow-orders" },
     { name = "assistflow-refunds" },
     { name = "assistflow-returns" },
@@ -115,6 +117,7 @@ requires-dist = [
     { name = "assistflow-conversations", editable = "services/conversations" },
     { name = "assistflow-customers", editable = "services/customers" },
     { name = "assistflow-knowledge", editable = "services/knowledge" },
+    { name = "assistflow-memory", editable = "agent/memory" },
     { name = "assistflow-orders", editable = "services/orders" },
     { name = "assistflow-refunds", editable = "services/refunds" },
     { name = "assistflow-returns", editable = "services/returns" },
@@ -196,6 +199,25 @@ dependencies = [
 requires-dist = [
     { name = "assistflow-contracts", editable = "packages/contracts" },
     { name = "assistflow-customers", editable = "services/customers" },
+    { name = "sqlalchemy", specifier = ">=2" },
+]
+
+[[package]]
+name = "assistflow-memory"
+version = "0.1.0"
+source = { editable = "agent/memory" }
+dependencies = [
+    { name = "assistflow-contracts" },
+    { name = "assistflow-customers" },
+    { name = "assistflow-runtime" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistflow-contracts", editable = "packages/contracts" },
+    { name = "assistflow-customers", editable = "services/customers" },
+    { name = "assistflow-runtime", editable = "agent/runtime" },
     { name = "sqlalchemy", specifier = ">=2" },
 ]
 
