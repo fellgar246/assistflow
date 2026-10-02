@@ -11,7 +11,24 @@ output "feature_flags" {
     enable_managed_rag      = var.enable_managed_rag
     enable_knowledge_bucket = var.enable_knowledge_bucket
     enable_schedules        = var.enable_schedules
+    enable_async_workers    = var.enable_async_workers
+    enable_cognito          = var.enable_cognito
   }
+}
+
+output "cognito_user_pool_id" {
+  description = "User pool id. Empty while enable_cognito is false."
+  value       = module.cognito.user_pool_id
+}
+
+output "side_effect_queue_url" {
+  description = "Side-effect queue URL. Empty while enable_async_workers is false."
+  value       = module.async_workers.queue_url
+}
+
+output "side_effect_event_bus_name" {
+  description = "Side-effect event bus name. Empty while enable_async_workers is false."
+  value       = module.async_workers.event_bus_name
 }
 
 output "budget_enabled" {

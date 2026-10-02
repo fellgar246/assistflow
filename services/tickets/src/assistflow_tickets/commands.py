@@ -8,6 +8,11 @@ from uuid import UUID, uuid4
 from assistflow_contracts.conversation import ConversationStatus
 from assistflow_contracts.support import Ticket, TicketCategory, TicketPriority, TicketStatus
 from assistflow_conversations.audit import audit_payload
+from assistflow_conversations.outbox import (
+    CONVERSATION_ESCALATED,
+    TICKET_CREATED,
+    enqueue_event,
+)
 from assistflow_conversations.repository import (
     AuditEventRecord,
     AuditRepository,
@@ -121,6 +126,20 @@ def create_ticket(
         idempotency_key=idempotency_key,
         arguments_hash=arguments_hash,
         result_json=cast(dict[str, object], ticket.model_dump(mode="json")),
+        created_at=created_at,
+    )
+    enqueue_event(
+        session,
+        tenant_id=tenant_id,
+        correlation_id=correlation_id,
+        event_name=TICKET_CREATED,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        entities={
+            "ticket_id": record.id,
+            "customer_id": customer_id,
+            "conversation_id": conversation_id,
+        },
         created_at=created_at,
     )
     return TicketWrite(ticket=ticket, replayed=False)
@@ -293,6 +312,20 @@ def request_human_escalation(
         idempotency_key=idempotency_key,
         arguments_hash=arguments_hash,
         result_json=result,
+        created_at=created_at,
+    )
+    enqueue_event(
+        session,
+        tenant_id=tenant_id,
+        correlation_id=correlation_id,
+        event_name=CONVERSATION_ESCALATED,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        entities={
+            "conversation_id": conversation.id,
+            "ticket_id": ticket.id,
+            "customer_id": conversation.customer_id,
+        },
         created_at=created_at,
     )
     return EscalationWrite(

@@ -18,26 +18,18 @@ import {
   type TraceSummary,
 } from "./schemas";
 
-export type StaffHeaders = {
-  tenantId: string;
-  agentId: string;
-};
-
 async function staffRequest<T>(
   path: string,
   schema: z.ZodType<T>,
-  staff: StaffHeaders,
   init: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
-  headers.set("X-Tenant-Id", staff.tenantId);
-  headers.set("X-Agent-Id", staff.agentId);
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, { ...init, headers });
+    response = await fetch(`/api${path}`, { ...init, headers, credentials: "include" });
   } catch {
     throw new ApiError("We couldn't load this conversation. Check your connection and try again.", 0);
   }
@@ -85,7 +77,7 @@ async function problemMessage(response: Response): Promise<string> {
 export async function listStaffActors(): Promise<{ actors: StaffActor[] }> {
   let response: Response;
   try {
-    response = await fetch("/api/dev/staff");
+    response = await fetch("/api/dev/staff", { credentials: "include" });
   } catch {
     throw new ApiError("We couldn't load this conversation. Check your connection and try again.", 0);
   }
@@ -96,7 +88,6 @@ export async function listStaffActors(): Promise<{ actors: StaffActor[] }> {
 }
 
 export function listInbox(
-  staff: StaffHeaders,
   queue: "all" | "escalated" | "waiting_approval",
   cursor?: string | null,
 ): Promise<StaffInbox> {
@@ -104,95 +95,68 @@ export function listInbox(
   if (cursor) {
     params.set("cursor", cursor);
   }
-  return staffRequest(`/staff/inbox?${params.toString()}`, staffInboxSchema, staff);
+  return staffRequest(`/staff/inbox?${params.toString()}`, staffInboxSchema);
 }
 
-export function readStaffConversation(
-  staff: StaffHeaders,
-  conversationId: string,
-): Promise<StaffConversation> {
-  return staffRequest(`/staff/conversations/${conversationId}`, staffConversationSchema, staff);
+export function readStaffConversation(conversationId: string): Promise<StaffConversation> {
+  return staffRequest(`/staff/conversations/${conversationId}`, staffConversationSchema);
 }
 
-export function readStaffTranscript(
-  staff: StaffHeaders,
-  conversationId: string,
-): Promise<{ items: Message[] }> {
+export function readStaffTranscript(conversationId: string): Promise<{ items: Message[] }> {
   return staffRequest(
     `/staff/conversations/${conversationId}/messages?limit=100`,
     messagePageSchema,
-    staff,
   );
 }
 
-export function readTrace(staff: StaffHeaders, conversationId: string): Promise<TraceSummary> {
-  return staffRequest(`/staff/conversations/${conversationId}/trace`, traceSummarySchema, staff);
+export function readTrace(conversationId: string): Promise<TraceSummary> {
+  return staffRequest(`/staff/conversations/${conversationId}/trace`, traceSummarySchema);
 }
 
-export function readTicket(staff: StaffHeaders, ticketId: string): Promise<TicketDetail> {
-  return staffRequest(`/staff/tickets/${ticketId}`, ticketDetailSchema, staff);
+export function readTicket(ticketId: string): Promise<TicketDetail> {
+  return staffRequest(`/staff/tickets/${ticketId}`, ticketDetailSchema);
 }
 
-export function takeOver(
-  staff: StaffHeaders,
-  conversationId: string,
-  idempotencyKey: string,
-): Promise<StaffConversation> {
-  return staffRequest(
-    `/staff/conversations/${conversationId}/takeover`,
-    staffConversationSchema,
-    staff,
-    { method: "POST", body: JSON.stringify({ idempotency_key: idempotencyKey }) },
-  );
+export function takeOver(conversationId: string, idempotencyKey: string): Promise<StaffConversation> {
+  return staffRequest(`/staff/conversations/${conversationId}/takeover`, staffConversationSchema, {
+    method: "POST",
+    body: JSON.stringify({ idempotency_key: idempotencyKey }),
+  });
 }
 
 export function resolveConversation(
-  staff: StaffHeaders,
   conversationId: string,
   idempotencyKey: string,
 ): Promise<StaffConversation> {
-  return staffRequest(
-    `/staff/conversations/${conversationId}/resolve`,
-    staffConversationSchema,
-    staff,
-    { method: "POST", body: JSON.stringify({ idempotency_key: idempotencyKey }) },
-  );
+  return staffRequest(`/staff/conversations/${conversationId}/resolve`, staffConversationSchema, {
+    method: "POST",
+    body: JSON.stringify({ idempotency_key: idempotencyKey }),
+  });
 }
 
 export function postStaffReply(
-  staff: StaffHeaders,
   conversationId: string,
   content: string,
   idempotencyKey: string,
 ): Promise<Message> {
-  return staffRequest(`/staff/conversations/${conversationId}/messages`, messageSchema, staff, {
+  return staffRequest(`/staff/conversations/${conversationId}/messages`, messageSchema, {
     method: "POST",
     body: JSON.stringify({ content, idempotency_key: idempotencyKey }),
   });
 }
 
-export function confirmAsStaff(
-  staff: StaffHeaders,
-  conversationId: string,
-  approvalId: string,
-): Promise<Approval> {
+export function confirmAsStaff(conversationId: string, approvalId: string): Promise<Approval> {
   return staffRequest(
     `/staff/conversations/${conversationId}/approvals/${approvalId}/confirm`,
     approvalSchema,
-    staff,
     { method: "POST", body: "{}" },
   );
 }
 
-export function rejectAsStaff(
-  staff: StaffHeaders,
-  conversationId: string,
-  approvalId: string,
-): Promise<Approval> {
+export function rejectAsStaff(conversationId: string, approvalId: string): Promise<Approval> {
   return staffRequest(
     `/staff/conversations/${conversationId}/approvals/${approvalId}/reject`,
     approvalSchema,
-    staff,
     { method: "POST", body: "{}" },
   );
 }

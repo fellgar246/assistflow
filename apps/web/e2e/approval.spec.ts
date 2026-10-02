@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 const ACTOR = {
+  key: "ava-chen",
   label: "Ava Chen",
   organization: "Harbor Goods",
-  tenant_id: "11111111-1111-4111-8111-111111111111",
+  role: "customer" as const,
   customer_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
 };
 
@@ -30,8 +31,12 @@ test("customer can confirm or cancel an address change from the chat", async ({ 
     const path = url.pathname.replace(/^\/api/, "");
     const method = route.request().method();
 
-    if (path === "/dev/actors" && method === "GET") {
-      await route.fulfill({ json: { actors: [ACTOR] } });
+    if (path === "/dev/session" && method === "GET") {
+      await route.fulfill({ json: ACTOR });
+      return;
+    }
+    if (path === "/dev/issuer/users" && method === "GET") {
+      await route.fulfill({ json: { users: [ACTOR] } });
       return;
     }
     if (path === "/conversations" && method === "GET") {

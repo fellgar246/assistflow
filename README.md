@@ -50,19 +50,13 @@ make seed
 
 `make seed` can be run again. It updates the same customers, orders, shipments, and tickets instead of inserting duplicates. The fixture file is `knowledge/fixtures/support_domain.json`. It also ingests the published help articles under `knowledge/policies` and `knowledge/product-docs` for each demo tenant. Re-running ingest leaves an unchanged checksum in place. `python -m assistflow_api.ingest_knowledge` from `apps/api` reloads those articles without reseeding orders.
 
-Demo tenant `11111111-1111-4111-8111-111111111111` (Harbor Goods) includes order `ORD-10482`, an in-transit shipment from the DFW hub, and one open ticket. Demo tenant `22222222-2222-4222-8222-222222222222` (Fieldline Supply) has a different order, `ORD-20817`. Send the tenant on every support request:
+Demo tenant Harbor Goods includes order `ORD-10482`, an in-transit shipment from the DFW hub, and one open ticket. Demo tenant Fieldline Supply has a different order, `ORD-20817`. Sign in as a seeded person. The access token carries the tenant, the role, and the customer or agent id. A `tenant_id` in the request body is ignored.
 
-```text
-X-Tenant-Id: 11111111-1111-4111-8111-111111111111
-```
+Local sign-in is `POST /dev/issuer/session` with `{ "user": "ava-chen" }`. The response sets an HttpOnly cookie named `assistflow_session` and returns the person's name, organization, and role. It does not return the token. Seeded people are `ava-chen` (Harbor customer), `nora-hale` (Harbor support), `ben-ortiz` (Fieldline customer), and `owen-blake` (Fieldline support). `GET /dev/issuer/users` lists those names without tenant ids. `POST /dev/issuer/token` mints a bearer token for tests. Those routes, and `GET /dev/session`, exist only while `EXECUTION_MODE=local`.
 
-Conversation routes also need the customer. Both values come from these headers. The API does not take a tenant id from the request body.
+`aws-demo` and `showcase` refuse to start when `AUTH_ISSUER` is empty or is the local issuer. Set `AUTH_ISSUER`, `AUTH_AUDIENCE`, and optionally `AUTH_JWKS_URL` to a real pool. The API never calls that pool from tests.
 
-```text
-X-Customer-Id: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001
-```
-
-`X-Correlation-Id` is optional. When it is omitted, the API assigns one and returns it on the response. Audit events for that request store the same id.
+`X-Correlation-Id` is optional. When it is omitted, the API assigns one and returns it on the response. Audit events for that request store the same id. An authorization failure is logged with the reason, method, and path. The token is not logged.
 
 Low-risk writes run once for each idempotency key: a ticket, a ticket note, or an escalation. Sending the same key and the same arguments again returns the original result. A sensitive change — shipping address, return, or refund request — is checked for eligibility first. An eligible proposal is saved as a pending approval for 15 minutes and shown in the chat as a diff. Nothing is written until the customer confirms that approval. Confirm and cancel send only the approval id. The server reloads the stored arguments, checks that the approval is still pending and unexpired, and checks the arguments hash again. The business write and the consumed approval commit together. Confirming twice returns the same result and does not write again. Cancelling or letting the approval expire leaves the order unchanged. The model cannot pass an approval flag. A refund request is never marked paid and never stores a payment instrument.
 
@@ -86,6 +80,10 @@ Support reads:
 | POST | `/conversations/{conversation_id}/approvals/{approval_id}/reject` |
 | GET | `/preferences` |
 | DELETE | `/preferences` |
+| GET | `/documents` and `/documents/{document_id}` |
+| GET | `/dev/issuer/users` |
+| POST | `/dev/issuer/session` |
+| GET | `/dev/session` |
 | GET | `/dev/staff` |
 | GET | `/staff/inbox` |
 | GET | `/staff/conversations/{conversation_id}` |
@@ -102,13 +100,15 @@ Support reads:
 
 A resolved conversation stays closed. When the customer sends another message, the API opens a new conversation, stores the message there, and returns that id in `X-Conversation-Id`. The previous thread is unchanged.
 
-While `EXECUTION_MODE=local`, `GET /dev/actors` lists the seeded customers the chat can act as. The chat shows that choice in a control marked "Development only". It is a named customer, not a tenant id field, and the route is not available in other execution modes. `GET /dev/staff` lists the seeded support agents the same way. Staff routes read `X-Tenant-Id` and `X-Agent-Id`. They are development-only and return not found outside local mode. The inbox lists conversations that are escalated or waiting for confirmation, newest update first. Take over assigns the conversation and its ticket. A human reply is stored as an assistant message with author type `support_agent`, so the customer thread can label it as a person. Resolve closes the conversation and the linked ticket, and repeating it does not close them again. Staff confirmation of a pending change uses the same stored arguments and hash check as the customer confirmation, and records the staff agent as `approved_by`. The trace summary shows kind, tool name, status, latency, and an error code. It does not include provider payloads. The web app proxies `/api/*` to the API. The console does not call a model to render a page.
+The web app signs in at `/login`. The page lists the seeded people by name and organization. There is no tenant id field. Choosing a person stores the session cookie on the web origin. A customer opens `/chat`. A support agent opens `/agent/inbox`. A customer token on a staff route is forbidden. A missing token on a protected route is unauthorized. In local mode the chat and the inbox can switch among seeded people of the same role. That control is marked "Development only". `GET /dev/actors` and `GET /dev/staff` remain local-only catalogs and are not the authority for a request. Staff inbox routes are available in every execution mode and require a verified support-agent token. The inbox lists conversations that are escalated or waiting for confirmation, newest update first, and only for that agent's tenant. Take over assigns the conversation and its ticket. A human reply is stored as an assistant message with author type `support_agent`, so the customer thread can label it as a person. Resolve closes the conversation and the linked ticket, and repeating it does not close them again. Staff confirmation of a pending change uses the same stored arguments and hash check as the customer confirmation, and records the staff agent as `approved_by`. The trace summary shows kind, tool name, status, latency, and an error code. It does not include provider payloads. The web app proxies `/api/*` to the API. The console does not call a model to render a page.
 
 List routes take `limit` (default 20, maximum 100) and an opaque `cursor`. The generated API document is at [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json).
 
 Stop the database with `make down`.
 
-`LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, guardrail, managed-retrieval, and long-term-memory flags off, and it forces retrieval back to the local index even if `RAG_PROVIDER` names an AWS provider. Credentials are read from the environment only. Do not commit a filled `.env` file.
+`LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, guardrail, managed-retrieval, long-term-memory, and async-worker flags off, and it forces retrieval back to the local index even if `RAG_PROVIDER` names an AWS provider. Credentials are read from the environment only. Do not commit a filled `.env` file.
+
+Creating a ticket, escalating a conversation, consuming an approval, and resolving a conversation each record an outbox row in the same transaction as the change. The HTTP response returns before a consumer runs. The API publishes that row afterward. A publish failure is logged and the row stays for a later attempt. It does not undo the change. Locally the publisher is an in-process queue drained after the response. The same handlers write an in-app notice, a fan-out audit row, a short summary when a conversation resolves, and a marker on a small fraction of resolved conversations (`EVAL_SAMPLE_RATE`, default `0.05`) for later evaluation. Delivering one event id twice does not repeat those writes. A summary failure leaves the conversation resolved. The notice email is a log line, not a mailbox. An EventBridge or SQS client is constructed only when `AWS_ENABLED` and `ASYNC_WORKERS_ENABLED` are both true. A normal Terraform apply leaves the queue, the bus, and the consumer uncreated until `enable_async_workers` is true.
 
 ## Retrieval
 

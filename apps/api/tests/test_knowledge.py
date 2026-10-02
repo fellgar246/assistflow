@@ -181,14 +181,14 @@ def test_other_tenants_and_retired_documents_are_absent(support_engine: Engine) 
 def test_chat_cites_a_policy_and_abstains_without_a_write(support_client: TestClient) -> None:
     opened = support_client.post(
         "/conversations",
-        headers=_headers(HARBOR, HARBOR_CUSTOMER),
+        headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER),
         json={"idempotency_key": "rag-conv-1"},
     )
     assert opened.status_code == 201
     conversation_id = opened.json()["id"]
     asked = support_client.post(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(HARBOR, HARBOR_CUSTOMER),
+        headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER),
         json={
             "content": "How many days do I have to return a delivered item?",
             "idempotency_key": "rag-msg-1",
@@ -197,7 +197,7 @@ def test_chat_cites_a_policy_and_abstains_without_a_write(support_client: TestCl
     assert asked.status_code == 201
     transcript = support_client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(HARBOR, HARBOR_CUSTOMER),
+        headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER),
     )
     assert transcript.status_code == 200
     assistant = next(item for item in transcript.json()["items"] if item["role"] == "assistant")
@@ -210,7 +210,7 @@ def test_chat_cites_a_policy_and_abstains_without_a_write(support_client: TestCl
 
     missed = support_client.post(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(HARBOR, HARBOR_CUSTOMER),
+        headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER),
         json={
             "content": "What is the weather in Tokyo tomorrow?",
             "idempotency_key": "rag-msg-2",
@@ -219,7 +219,7 @@ def test_chat_cites_a_policy_and_abstains_without_a_write(support_client: TestCl
     assert missed.status_code == 201
     again = support_client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(HARBOR, HARBOR_CUSTOMER),
+        headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER),
     )
     replies = [item for item in again.json()["items"] if item["role"] == "assistant"]
     assert replies[-1]["content"] == ABSTAIN_MESSAGE
@@ -429,9 +429,7 @@ class _InjectionAdapter:
         )
 
 
-def _headers(tenant_id: UUID, customer_id: UUID) -> dict[str, str]:
-    return {
-        "X-Tenant-Id": str(tenant_id),
-        "X-Customer-Id": str(customer_id),
-        "X-Correlation-Id": "corr-rag-1",
-    }
+def _headers(client: TestClient, tenant_id: UUID, customer_id: UUID) -> dict[str, str]:
+    from tokens import customer_headers
+
+    return customer_headers(client, tenant_id, customer_id, "corr-rag-1")

@@ -1,14 +1,13 @@
 "use client";
 
 import { ErrorPanel } from "@/components/chat/states";
-import { ApiError } from "@/lib/api/client";
-import { listStaffActors, readTicket, type StaffHeaders } from "@/lib/api/staff";
+import { ApiError, readSession } from "@/lib/api/client";
+import { readTicket } from "@/lib/api/staff";
 import { absoluteTime, relativeTime } from "@/lib/chat/format";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSyncExternalStore } from "react";
-
-const STAFF_KEY = "assistflow.localStaff";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 const NOTE_LABEL: Record<string, string> = {
   customer: "Customer",
@@ -23,30 +22,38 @@ const TICKET_STATUS: Record<string, string> = {
   resolved: "Resolved",
 };
 
-function subscribe(onStoreChange: () => void): () => void {
-  window.addEventListener("assistflow-staff", onStoreChange);
-  return () => window.removeEventListener("assistflow-staff", onStoreChange);
-}
-
 export function TicketView({ ticketId }: { ticketId: string }) {
-  const staffId = useSyncExternalStore(subscribe, () => window.localStorage.getItem(STAFF_KEY), () => null);
-  const actorsQuery = useQuery({
-    queryKey: ["staff-actors"],
-    queryFn: listStaffActors,
+  const router = useRouter();
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: readSession,
     retry: false,
   });
-  const actors = actorsQuery.data?.actors ?? [];
-  const staff = actors.find((item) => item.agent_id === staffId) ?? actors[0] ?? null;
-  const headers: StaffHeaders | null = staff
-    ? { tenantId: staff.tenant_id, agentId: staff.agent_id }
-    : null;
+  const signedIn = sessionQuery.data?.role === "support_agent";
   const ticketQuery = useQuery({
-    queryKey: ["staff-ticket", ticketId, headers?.agentId],
-    queryFn: () => readTicket(headers!, ticketId),
-    enabled: headers !== null,
+    queryKey: ["staff-ticket", ticketId, sessionQuery.data?.key],
+    queryFn: () => readTicket(ticketId),
+    enabled: signedIn,
   });
 
-  if (actorsQuery.isError && actorsQuery.error instanceof ApiError && actorsQuery.error.status === 404) {
+  useEffect(() => {
+    if (sessionQuery.isError && sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401) {
+      router.replace("/login");
+    }
+  }, [router, sessionQuery.error, sessionQuery.isError]);
+
+  if (
+    sessionQuery.isLoading ||
+    (sessionQuery.isError && sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401)
+  ) {
+    return (
+      <main className="flex h-dvh items-center justify-center px-6">
+        <p className="text-sm text-muted">Loading the ticket…</p>
+      </main>
+    );
+  }
+
+  if (!signedIn) {
     return (
       <main className="flex h-dvh items-center justify-center px-6">
         <h1 className="text-xl font-semibold text-text">You don&apos;t have access to this page.</h1>
@@ -58,7 +65,7 @@ export function TicketView({ ticketId }: { ticketId: string }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-4 px-4 py-6">
       <p className="text-xs font-medium text-warning">Development staff</p>
-      {ticketQuery.isLoading || actorsQuery.isLoading ? (
+      {ticketQuery.isLoading || sessionQuery.isLoading ? (
         <p className="text-sm text-muted">Loading the ticket…</p>
       ) : ticketQuery.isError || !ticket ? (
         <ErrorPanel onRetry={() => void ticketQuery.refetch()} />
@@ -80,25 +87,25 @@ export function TicketView({ ticketId }: { ticketId: string }) {
               Open conversation
             </Link>
           ) : null}
-          <section aria-label="Notes" className="flex flex-col gap-3">
+          <section>
+            <h2 className="text-sm font-semibold text-text">Notes</h2>
             {ticket.notes.length === 0 ? (
-              <p className="text-sm text-muted">No notes yet.</p>
+              <p className="mt-2 text-sm text-muted">No notes yet.</p>
             ) : (
-              ticket.notes.map((note) => (
-                <article key={note.id} className="rounded-lg border border-default bg-surface p-3">
-                  <p className="text-sm font-medium text-text">
-                    {NOTE_LABEL[note.author_type] ?? "Support"}
-                  </p>
-                  <p className="mt-1 text-[15px] leading-6 break-words text-text">{note.body}</p>
-                  <time
-                    dateTime={note.created_at}
-                    title={absoluteTime(note.created_at)}
-                    className="mt-1 block text-xs text-muted"
-                  >
-                    {relativeTime(note.created_at)}
-                  </time>
-                </article>
-              ))
+              <ul className="mt-2 flex flex-col gap-3">
+                {ticket.notes.map((note) => (
+                  <li key={note.id} className="rounded-lg border border-default bg-surface px-3 py-3">
+                    <p className="text-sm text-text">{note.body}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      {NOTE_LABEL[note.author_type] ?? note.author_type}
+                      {" · "}
+                      <time dateTime={note.created_at} title={absoluteTime(note.created_at)}>
+                        {relativeTime(note.created_at)}
+                      </time>
+                    </p>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         </>

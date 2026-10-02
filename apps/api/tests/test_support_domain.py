@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from assistflow_api.config import repo_root
 from assistflow_api.seed import fixture_path, seed_support_domain
+from tokens import authorization
 
 HARBOR = "ORD-10482"
 FIELDLINE = "ORD-20817"
@@ -39,17 +40,17 @@ def _tenant_for(order_number: str) -> tuple[dict[str, Any], dict[str, Any]]:
     raise AssertionError(order_number)
 
 
-def _headers(order_number: str) -> dict[str, str]:
-    tenant, _order = _tenant_for(order_number)
-    return {"X-Tenant-Id": str(tenant["id"])}
+def _headers(client: TestClient, order_number: str) -> dict[str, str]:
+    user = "ben-ortiz" if order_number == FIELDLINE else "ava-chen"
+    return authorization(client, user)
 
 
 def test_known_order_matches_the_fixture_and_is_stable(support_client: TestClient) -> None:
     _tenant, order = _tenant_for(HARBOR)
     shipment = order["shipment"]
 
-    first = support_client.get(f"/orders/{HARBOR}", headers=_headers(HARBOR))
-    second = support_client.get(f"/orders/{HARBOR}", headers=_headers(HARBOR))
+    first = support_client.get(f"/orders/{HARBOR}", headers=_headers(support_client, HARBOR))
+    second = support_client.get(f"/orders/{HARBOR}", headers=_headers(support_client, HARBOR))
 
     assert first.status_code == 200
     assert first.json() == second.json()
@@ -70,7 +71,7 @@ def test_known_order_matches_the_fixture_and_is_stable(support_client: TestClien
 
 
 def test_unknown_order_is_not_found(support_client: TestClient) -> None:
-    response = support_client.get("/orders/ORD-99999", headers=_headers(HARBOR))
+    response = support_client.get("/orders/ORD-99999", headers=_headers(support_client, HARBOR))
 
     assert response.status_code == 404
     assert response.json() == {
@@ -81,8 +82,8 @@ def test_unknown_order_is_not_found(support_client: TestClient) -> None:
 
 
 def test_other_tenant_cannot_read_or_list_the_order(support_client: TestClient) -> None:
-    hidden = support_client.get(f"/orders/{HARBOR}", headers=_headers(FIELDLINE))
-    listed = support_client.get("/orders", headers=_headers(FIELDLINE))
+    hidden = support_client.get(f"/orders/{HARBOR}", headers=_headers(support_client, FIELDLINE))
+    listed = support_client.get("/orders", headers=_headers(support_client, FIELDLINE))
 
     assert hidden.status_code == 404
     assert hidden.json()["code"] == "order_not_found"
@@ -94,19 +95,19 @@ def test_other_tenant_cannot_read_or_list_the_order(support_client: TestClient) 
 def test_seeded_eligibility_checks(support_client: TestClient) -> None:
     address = support_client.get(
         f"/orders/{HARBOR}/eligibility/address-change",
-        headers=_headers(HARBOR),
+        headers=_headers(support_client, HARBOR),
     )
     delivered = support_client.get(
         f"/orders/{FIELDLINE}/eligibility/address-change",
-        headers=_headers(FIELDLINE),
+        headers=_headers(support_client, FIELDLINE),
     )
     returns = support_client.get(
         f"/orders/{HARBOR}/eligibility/return",
-        headers=_headers(HARBOR),
+        headers=_headers(support_client, HARBOR),
     )
     refund = support_client.get(
         f"/orders/{HARBOR}/eligibility/refund",
-        headers=_headers(HARBOR),
+        headers=_headers(support_client, HARBOR),
     )
 
     assert address.json() == {"eligible": True, "reason_code": "eligible"}
@@ -128,7 +129,7 @@ def test_each_seeded_aggregate_can_be_read(support_client: TestClient) -> None:
     tenant, order = _tenant_for(HARBOR)
     ticket_id = tenant["tickets"][0]["id"]
     customer_id = tenant["customers"][0]["id"]
-    headers = _headers(HARBOR)
+    headers = _headers(support_client, HARBOR)
 
     customer = support_client.get(f"/customers/{customer_id}", headers=headers)
     shipment = support_client.get(f"/orders/{HARBOR}/shipment", headers=headers)
@@ -149,7 +150,10 @@ def test_ticket_from_another_tenant_is_not_found(support_client: TestClient) -> 
     tenant, _order = _tenant_for(HARBOR)
     ticket_id = tenant["tickets"][0]["id"]
 
-    response = support_client.get(f"/tickets/{ticket_id}", headers=_headers(FIELDLINE))
+    response = support_client.get(
+        f"/tickets/{ticket_id}",
+        headers=_headers(support_client, FIELDLINE),
+    )
 
     assert response.status_code == 404
     assert response.json()["code"] == "ticket_not_found"
@@ -159,10 +163,10 @@ def test_ticket_from_another_tenant_is_not_found(support_client: TestClient) -> 
 def test_missing_tenant_scope_is_rejected(support_client: TestClient) -> None:
     response = support_client.get(f"/orders/{HARBOR}")
 
-    assert response.status_code == 400
+    assert response.status_code == 401
     assert response.json() == {
-        "code": "tenant_required",
-        "message": "A tenant scope is required.",
+        "code": "unauthorized",
+        "message": "Sign in is required.",
     }
 
 
@@ -189,7 +193,7 @@ def test_order_pages_default_to_twenty_and_honor_the_cursor(
             )
         session.commit()
 
-    headers = _headers(HARBOR)
+    headers = _headers(support_client, HARBOR)
     first = support_client.get("/orders", headers=headers)
     assert first.status_code == 200
     assert len(first.json()["items"]) == 20
@@ -217,7 +221,7 @@ def test_seed_is_idempotent(support_client: TestClient, support_engine: Engine) 
     seed_support_domain(support_engine)
     seed_support_domain(support_engine)
 
-    listed = support_client.get("/orders", headers=_headers(HARBOR))
+    listed = support_client.get("/orders", headers=_headers(support_client, HARBOR))
     assert [item["order_number"] for item in listed.json()["items"]] == [HARBOR]
 
 
@@ -230,7 +234,7 @@ def test_ticket_create_replays_the_same_key(support_client: TestClient) -> None:
         "summary": "Need a copy of the invoice",
         "idempotency_key": "ticket-1",
     }
-    headers = _headers(HARBOR)
+    headers = _headers(support_client, HARBOR)
 
     created = support_client.post("/tickets", headers=headers, json=payload)
     replayed = support_client.post("/tickets", headers=headers, json=payload)

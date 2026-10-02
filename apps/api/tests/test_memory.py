@@ -174,15 +174,14 @@ def _client(engine: Engine, **env: str) -> TestClient:
 
 
 def _headers(
+    client: TestClient,
     tenant: UUID = HARBOR,
     customer: UUID = HARBOR_CUSTOMER,
     correlation: str = "corr-memory",
 ) -> dict[str, str]:
-    return {
-        "X-Tenant-Id": str(tenant),
-        "X-Customer-Id": str(customer),
-        "X-Correlation-Id": correlation,
-    }
+    from tokens import customer_headers
+
+    return customer_headers(client, tenant, customer, correlation)
 
 
 def _count(session: Session, model: type[SessionMemoryEventRow] | type[MemoryPreferenceRow]) -> int:
@@ -241,24 +240,24 @@ def test_two_turns_record_the_order_and_reuse_it(support_engine: Engine) -> None
     with _client(support_engine, SHORT_TERM_MEMORY_ENABLED="true") as client:
         opened = client.post(
             "/conversations",
-            headers=_headers(),
+            headers=_headers(client),
             json={"idempotency_key": "mem-open"},
         )
         assert opened.status_code == 201
         conversation_id = opened.json()["id"]
         first = client.post(
             f"/conversations/{conversation_id}/messages",
-            headers=_headers(),
+            headers=_headers(client),
             json={"content": f"Where is {ORDER}?", "idempotency_key": "mem-1"},
         )
         second = client.post(
             f"/conversations/{conversation_id}/messages",
-            headers=_headers(),
+            headers=_headers(client),
             json={"content": "change it to this address", "idempotency_key": "mem-2"},
         )
         transcript = client.get(
             f"/conversations/{conversation_id}/messages",
-            headers=_headers(),
+            headers=_headers(client),
         )
     assert first.status_code == 201
     assert second.status_code == 201
@@ -397,12 +396,14 @@ def test_preference_routes_are_tenant_scoped(support_engine: Engine) -> None:
     with _client(support_engine, LONG_TERM_MEMORY_ENABLED="true") as client:
         denied = client.get(
             "/preferences",
-            headers=_headers(tenant=FIELDLINE, customer=HARBOR_CUSTOMER),
+            headers=_headers(client, tenant=FIELDLINE, customer=FIELDLINE_CUSTOMER),
         )
-        listed = client.get("/preferences", headers=_headers())
-        deleted = client.delete("/preferences", headers=_headers())
-        empty = client.get("/preferences", headers=_headers())
-    assert denied.status_code == 404
+        listed = client.get("/preferences", headers=_headers(client))
+        deleted = client.delete("/preferences", headers=_headers(client))
+        empty = client.get("/preferences", headers=_headers(client))
+    assert denied.status_code == 200
+    assert denied.json()["items"] == []
+    assert "es" not in denied.text
     assert listed.status_code == 200
     assert listed.json()["items"][0]["value"] == "es"
     assert listed.json()["items"][0]["purpose"] == PURPOSES[PREFERRED_LANGUAGE]
@@ -418,11 +419,11 @@ def test_long_term_flag_off_does_not_construct_or_write(
     monkeypatch.setattr("assistflow_memory.factory.build_hosted_memory_client", _explode)
     with _client(support_engine) as client:
         opened = client.post(
-            "/conversations", headers=_headers(), json={"idempotency_key": "off-open"}
+            "/conversations", headers=_headers(client), json={"idempotency_key": "off-open"}
         )
         posted = client.post(
             f"/conversations/{opened.json()['id']}/messages",
-            headers=_headers(),
+            headers=_headers(client),
             json={
                 "content": "My preferred language is English",
                 "idempotency_key": "off-msg",
@@ -441,11 +442,11 @@ def test_address_change_still_works_with_both_memory_flags_off(
     monkeypatch.setattr(LocalSessionMemory, "__init__", _explode)
     monkeypatch.setattr("assistflow_memory.factory.build_hosted_memory_client", _explode)
     opened = support_client.post(
-        "/conversations", headers=_headers(), json={"idempotency_key": "addr-off"}
+        "/conversations", headers=_headers(support_client), json={"idempotency_key": "addr-off"}
     )
     posted = support_client.post(
         f"/conversations/{opened.json()['id']}/messages",
-        headers=_headers(),
+        headers=_headers(support_client),
         json={
             "content": f"Please update the delivery address for {ORDER}",
             "idempotency_key": "addr-off-msg",
@@ -453,7 +454,7 @@ def test_address_change_still_works_with_both_memory_flags_off(
     )
     transcript = support_client.get(
         f"/conversations/{opened.json()['id']}/messages",
-        headers=_headers(),
+        headers=_headers(support_client),
     )
     assert posted.status_code == 201
     approvals = [
@@ -469,17 +470,17 @@ def test_address_change_still_works_with_both_memory_flags_off(
 def test_a_turn_stores_a_stated_language(support_engine: Engine) -> None:
     with _client(support_engine, LONG_TERM_MEMORY_ENABLED="true") as client:
         opened = client.post(
-            "/conversations", headers=_headers(), json={"idempotency_key": "lang-open"}
+            "/conversations", headers=_headers(client), json={"idempotency_key": "lang-open"}
         )
         posted = client.post(
             f"/conversations/{opened.json()['id']}/messages",
-            headers=_headers(),
+            headers=_headers(client),
             json={
                 "content": "My preferred language is English",
                 "idempotency_key": "lang-msg",
             },
         )
-        listed = client.get("/preferences", headers=_headers())
+        listed = client.get("/preferences", headers=_headers(client))
     assert posted.status_code == 201
     item = listed.json()["items"][0]
     assert item["key"] == PREFERRED_LANGUAGE

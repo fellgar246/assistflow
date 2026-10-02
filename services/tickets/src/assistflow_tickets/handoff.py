@@ -13,6 +13,7 @@ from assistflow_conversations.commands import (
     append_message,
     change_conversation_status,
 )
+from assistflow_conversations.outbox import CONVERSATION_RESOLVED, enqueue_event
 from assistflow_conversations.repository import (
     AuditEventRecord,
     AuditRepository,
@@ -195,6 +196,16 @@ def resolve_case(
             dict[str, object],
             {"id": str(updated.id), "status": updated.status.value},
         ),
+        created_at=updated_at,
+    )
+    enqueue_event(
+        session,
+        tenant_id=tenant_id,
+        correlation_id=actor.correlation_id,
+        event_name=CONVERSATION_RESOLVED,
+        actor_type=actor.actor_type,
+        actor_id=actor.actor_id,
+        entities={"conversation_id": conversation_id, "customer_id": current.customer_id},
         created_at=updated_at,
     )
     return HandoffWrite(conversation=updated, replayed=False)

@@ -23,6 +23,10 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.agentcore_memory_id == ""
     assert settings.managed_rag_enabled is False
     assert settings.local_only_mode is False
+    assert settings.async_workers_enabled is False
+    assert settings.eval_sample_rate == 0.05
+    assert settings.event_bus_name == ""
+    assert settings.event_queue_url == ""
     assert settings.database_url.endswith("@localhost:54329/assistflow")
     assert settings.max_agent_steps == 8
     assert settings.max_tool_calls_per_turn == 5
@@ -46,6 +50,9 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.guardrail_sensitive_information_strength == "HIGH"
     assert settings.guardrail_prompt_attack_strength == "HIGH"
     assert settings.guardrail_contextual_grounding_threshold is None
+    assert settings.auth_issuer == ""
+    assert settings.auth_audience == ""
+    assert settings.auth_jwks_url == ""
 
 
 def test_aws_demo_profile_enables_hosted_agent_and_model_only() -> None:
@@ -79,6 +86,7 @@ def test_local_only_mode_forces_hosted_features_off() -> None:
             "LONG_TERM_MEMORY_ENABLED": "true",
             "RAG_PROVIDER": "managed",
             "GUARDRAILS_ENABLED": "true",
+            "ASYNC_WORKERS_ENABLED": "true",
         }
     )
 
@@ -91,11 +99,17 @@ def test_local_only_mode_forces_hosted_features_off() -> None:
     assert settings.rag_provider is RagProvider.LOCAL
     assert settings.ai_enabled is True
     assert settings.guardrails_enabled is False
+    assert settings.async_workers_enabled is False
 
 
 def test_invalid_guardrail_strength_is_rejected() -> None:
     with pytest.raises(ValueError, match="GUARDRAIL_HARMFUL_CONTENT_STRENGTH"):
         load_settings({"GUARDRAIL_HARMFUL_CONTENT_STRENGTH": "extreme"})
+
+
+def test_invalid_sample_rate_is_rejected() -> None:
+    with pytest.raises(ValueError, match="EVAL_SAMPLE_RATE"):
+        load_settings({"EVAL_SAMPLE_RATE": "2"})
 
 
 def test_invalid_execution_mode_is_rejected() -> None:

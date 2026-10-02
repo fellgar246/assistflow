@@ -1,7 +1,6 @@
-"""Development staff console routes.
+"""Support inbox routes.
 
-These routes exist only while execution is local. A later sign-in flow
-replaces the staff header.
+The caller is the support agent on the verified token.
 """
 
 from typing import Annotated, Any
@@ -31,20 +30,14 @@ from assistflow_conversations.repository import ConversationRepository, MessageR
 from assistflow_customers.errors import SupportError
 from assistflow_runtime.redaction import redact_text
 from assistflow_tickets.handoff import post_human_reply, resolve_case, take_over
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from assistflow_api.actor import (
-    LOCAL_STAFF,
-    LocalStaffList,
-    StaffActor,
-    _parse_uuid,
-    require_tenant_header,
-)
+from assistflow_api.actor import LOCAL_STAFF, LocalStaffList, StaffActor
 from assistflow_api.approvals import confirm_stored_approval, present_approval
 from assistflow_api.config import ExecutionMode, Settings
-from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
+from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query, require_staff
 from assistflow_api.staff_views import conversation_detail, inbox_page, ticket_detail, trace_summary
 from assistflow_api.turns import tool_activity_for
 
@@ -52,6 +45,7 @@ router = APIRouter()
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
     400: {"model": Problem},
+    401: {"model": Problem},
     403: {"model": Problem},
     404: {"model": Problem},
     409: {"model": Problem},
@@ -63,38 +57,7 @@ Page = Annotated[PageQuery, Depends(page_query)]
 Correlation = Annotated[str, Depends(correlation_id)]
 
 
-def require_staff_actor(
-    request: Request,
-    x_tenant_id: Annotated[str | None, Header()] = None,
-    x_agent_id: Annotated[str | None, Header()] = None,
-) -> StaffActor:
-    """Resolve the local staff stub. Hidden once execution leaves local mode."""
-    settings = request.app.state.settings
-    if not isinstance(settings, Settings) or settings.execution_mode is not ExecutionMode.LOCAL:
-        raise SupportError("not_found", "This resource was not found.", 404)
-    tenant_id = require_tenant_header(x_tenant_id)
-    agent_id = _parse_uuid(
-        x_agent_id,
-        "staff_required",
-        "A development staff actor is required.",
-        "invalid_staff",
-        "The staff id is invalid.",
-    )
-    match = next(
-        (item for item in LOCAL_STAFF if item.tenant_id == tenant_id and item.agent_id == agent_id),
-        None,
-    )
-    if match is None:
-        raise SupportError("denied", "That staff actor is not available.", 403)
-    return StaffActor(
-        tenant_id=match.tenant_id,
-        agent_id=match.agent_id,
-        display_name=match.label,
-        actor_type="support_agent",
-    )
-
-
-Staff = Annotated[StaffActor, Depends(require_staff_actor)]
+Staff = Annotated[StaffActor, Depends(require_staff)]
 
 
 def _names(tenant_id: UUID) -> dict[UUID, str]:
@@ -115,7 +78,7 @@ def _stamp(response: Response, correlation: str) -> None:
 
 @router.get("/dev/staff", response_model=LocalStaffList, responses=_ERRORS)
 def list_local_staff(request: Request) -> LocalStaffList:
-    """Seeded staff for local development. Hidden once a real session exists."""
+    """Seeded staff names for local development. Hidden outside local execution."""
     settings = request.app.state.settings
     if not isinstance(settings, Settings) or settings.execution_mode is not ExecutionMode.LOCAL:
         raise SupportError("not_found", "This resource was not found.", 404)

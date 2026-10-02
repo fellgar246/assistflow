@@ -21,6 +21,7 @@ from assistflow_contracts.conversation import (
     ToolActivity,
     ToolActivityStatus,
 )
+from assistflow_contracts.gateway import GatewayActor
 from assistflow_contracts.memory import SessionFacts
 from assistflow_conversations.approvals import store_proposal
 from assistflow_conversations.commands import (
@@ -106,16 +107,23 @@ def complete_agent_turn(
             retriever=retriever,
         )
     )
+    tool_actor = gateway_actor_for(
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        actor_type=actor.actor_type,
+        correlation_id=actor.correlation_id,
+        conversation_id=conversation_id,
+    )
     result = bound.run(
         TurnContext(
-            tenant_id=tenant_id,
-            customer_id=customer_id,
-            conversation_id=conversation_id,
-            correlation_id=actor.correlation_id,
+            tenant_id=tool_actor.tenant_id,
+            customer_id=tool_actor.customer_id,
+            conversation_id=tool_actor.conversation_id,
+            correlation_id=tool_actor.correlation_id,
             customer_message=customer_message,
             history=history,
             prompt=PromptRef(id=DEFAULT_PROMPT_ID, version=DEFAULT_PROMPT_VERSION),
-            actor_type=actor.actor_type,
+            actor_type=tool_actor.actor_type,
             session_memory=session_memory,
             preferences=preferences,
         )
@@ -211,6 +219,24 @@ def complete_agent_turn(
         actor,
     )
     return result
+
+
+def gateway_actor_for(
+    *,
+    tenant_id: UUID,
+    customer_id: UUID,
+    actor_type: str,
+    correlation_id: str,
+    conversation_id: UUID,
+) -> GatewayActor:
+    """Build the tool actor from the verified request. Model arguments cannot replace it."""
+    return GatewayActor(
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        actor_type=actor_type,
+        correlation_id=correlation_id,
+        conversation_id=conversation_id,
+    )
 
 
 def build_turn_gateway(

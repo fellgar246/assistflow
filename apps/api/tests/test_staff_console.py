@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from assistflow_api.config import load_settings
 from assistflow_api.main import create_app
+from tokens import remote_settings
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 FIELDLINE = UUID("22222222-2222-4222-8222-222222222222")
@@ -28,14 +29,14 @@ FULL_HASH = "abc12345" + ("f" * 56)
 def test_inbox_is_tenant_scoped_and_empty_until_someone_is_waiting(
     support_client: TestClient, support_engine: Engine
 ) -> None:
-    empty = support_client.get("/staff/inbox", headers=_staff())
+    empty = support_client.get("/staff/inbox", headers=_staff(support_client))
     assert empty.status_code == 200
     assert empty.json()["items"] == []
     assert empty.json()["counts"]["all"] == 0
 
     conversation_id, _ticket_id = _escalate(support_client, support_engine)
-    harbor = support_client.get("/staff/inbox", headers=_staff())
-    other = support_client.get("/staff/inbox", headers=_staff(FIELDLINE, OWEN))
+    harbor = support_client.get("/staff/inbox", headers=_staff(support_client))
+    other = support_client.get("/staff/inbox", headers=_staff(support_client, FIELDLINE, OWEN))
 
     assert harbor.status_code == 200
     row = harbor.json()["items"][0]
@@ -53,51 +54,51 @@ def test_takeover_reply_resolve_and_reopen(
     conversation_id, ticket_id = _escalate(support_client, support_engine)
     taken = support_client.post(
         f"/staff/conversations/{conversation_id}/takeover",
-        headers=_staff(),
+        headers=_staff(support_client),
         json={"idempotency_key": "take-1"},
     )
     again = support_client.post(
         f"/staff/conversations/{conversation_id}/takeover",
-        headers=_staff(),
+        headers=_staff(support_client),
         json={"idempotency_key": "take-2"},
     )
     reply = support_client.post(
         f"/staff/conversations/{conversation_id}/messages",
-        headers=_staff(),
+        headers=_staff(support_client),
         json={"content": "I can help with that order.", "idempotency_key": "reply-1"},
     )
     customer_view = support_client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_customer(),
+        headers=_customer(support_client),
     )
     resolved = support_client.post(
         f"/staff/conversations/{conversation_id}/resolve",
-        headers=_staff(),
+        headers=_staff(support_client),
         json={"idempotency_key": "resolve-1"},
     )
     resolved_again = support_client.post(
         f"/staff/conversations/{conversation_id}/resolve",
-        headers=_staff(),
+        headers=_staff(support_client),
         json={"idempotency_key": "resolve-2"},
     )
-    ticket = support_client.get(f"/staff/tickets/{ticket_id}", headers=_staff())
+    ticket = support_client.get(f"/staff/tickets/{ticket_id}", headers=_staff(support_client))
     reopened = support_client.post(
         f"/conversations/{conversation_id}/messages",
-        headers=_customer(),
+        headers=_customer(support_client),
         json={"content": "One more question", "idempotency_key": "reopen-1"},
     )
     old_thread = support_client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_customer(),
+        headers=_customer(support_client),
     )
     new_id = reopened.headers["x-conversation-id"]
     new_thread = support_client.get(
         f"/conversations/{new_id}/messages",
-        headers=_customer(),
+        headers=_customer(support_client),
     )
     old_conversation = support_client.get(
         f"/conversations/{conversation_id}",
-        headers=_customer(),
+        headers=_customer(support_client),
     )
 
     assert taken.status_code == 200
@@ -127,7 +128,7 @@ def test_takeover_reply_resolve_and_reopen(
     assert ticket.json()["notes"] == [] or isinstance(ticket.json()["notes"], list)
     after = support_client.get(
         f"/staff/conversations/{conversation_id}/messages",
-        headers=_staff(),
+        headers=_staff(support_client),
     )
     resolved_lines = [
         item["content"]
@@ -149,7 +150,7 @@ def test_trace_summary_shows_a_denied_tool_without_a_payload(
     _insert_denied_trace(support_engine, conversation_id)
     summary = support_client.get(
         f"/staff/conversations/{conversation_id}/trace",
-        headers=_staff(),
+        headers=_staff(support_client),
     )
     assert summary.status_code == 200
     body = summary.json()
@@ -175,7 +176,7 @@ def test_staff_confirm_uses_the_same_approval_and_records_the_agent(
     approval = _propose_address(support_client, conversation_id)
     waiting = support_client.get(
         "/staff/inbox",
-        headers=_staff(),
+        headers=_staff(support_client),
         params={"queue": "waiting_approval"},
     )
     assert waiting.json()["items"][0]["id"] == conversation_id
@@ -183,12 +184,12 @@ def test_staff_confirm_uses_the_same_approval_and_records_the_agent(
 
     confirmed = support_client.post(
         f"/staff/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_staff(correlation="confirm-staff"),
+        headers=_staff(support_client, correlation="confirm-staff"),
         json={},
     )
     again = support_client.post(
         f"/staff/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_staff(correlation="confirm-staff-2"),
+        headers=_staff(support_client, correlation="confirm-staff-2"),
         json={},
     )
     assert confirmed.status_code == 200
@@ -207,7 +208,7 @@ def test_staff_confirm_rejects_a_changed_arguments_hash(
     _tamper(support_engine, str(approval["id"]))
     denied = support_client.post(
         f"/staff/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_staff(),
+        headers=_staff(support_client),
         json={},
     )
     assert denied.status_code == 409
@@ -216,18 +217,18 @@ def test_staff_confirm_rejects_a_changed_arguments_hash(
 
 
 def test_staff_routes_are_hidden_outside_local_mode(support_engine: Engine) -> None:
-    remote = create_app(load_settings({"EXECUTION_MODE": "aws-demo"}), engine=support_engine)
+    remote = create_app(load_settings(remote_settings()), engine=support_engine)
     with TestClient(remote) as client:
         hidden = client.get("/dev/staff")
-        inbox = client.get("/staff/inbox", headers=_staff())
+        inbox = client.get("/staff/inbox")
     assert hidden.status_code == 404
-    assert inbox.status_code == 404
+    assert inbox.status_code == 401
 
 
 def _open(client: TestClient) -> str:
     opened = client.post(
         "/conversations",
-        headers=_customer(),
+        headers=_customer(client),
         json={"idempotency_key": str(uuid4())},
     )
     assert opened.status_code == 201
@@ -255,7 +256,7 @@ def _escalate(client: TestClient, engine: Engine) -> tuple[str, str]:
 def _propose_address(client: TestClient, conversation_id: str) -> dict[str, object]:
     posted = client.post(
         f"/conversations/{conversation_id}/messages",
-        headers=_customer(),
+        headers=_customer(client),
         json={
             "content": (
                 "Please change the delivery address for ORD-10482\n"
@@ -272,7 +273,7 @@ def _propose_address(client: TestClient, conversation_id: str) -> dict[str, obje
     assert posted.status_code == 201, posted.text
     transcript = client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_customer(),
+        headers=_customer(client),
     )
     for item in transcript.json()["items"]:
         approvals = item.get("approvals") or []
@@ -350,21 +351,18 @@ def _line1(engine: Engine) -> str:
         return OrderRepository(session).require(HARBOR, "ORD-10482").shipping_address.line1
 
 
-def _customer(correlation: str = "corr-staff") -> dict[str, str]:
-    return {
-        "X-Tenant-Id": str(HARBOR),
-        "X-Customer-Id": str(HARBOR_CUSTOMER),
-        "X-Correlation-Id": correlation,
-    }
+def _customer(client: TestClient, correlation: str = "corr-staff") -> dict[str, str]:
+    from tokens import customer_headers
+
+    return customer_headers(client, HARBOR, HARBOR_CUSTOMER, correlation)
 
 
 def _staff(
+    client: TestClient,
     tenant: UUID = HARBOR,
     agent: UUID = NORA,
     correlation: str = "corr-staff",
 ) -> dict[str, str]:
-    return {
-        "X-Tenant-Id": str(tenant),
-        "X-Agent-Id": str(agent),
-        "X-Correlation-Id": correlation,
-    }
+    from tokens import staff_headers
+
+    return staff_headers(client, tenant, agent, correlation)

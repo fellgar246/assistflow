@@ -101,6 +101,19 @@ export const conversationPageSchema = z.object({
   next_cursor: z.string().nullable(),
 });
 
+export const loginUserSchema = z.object({
+  key: z.string().min(1),
+  label: z.string(),
+  organization: z.string(),
+  role: z.enum(["customer", "support_agent"]),
+});
+
+export const loginCatalogSchema = z.object({
+  users: z.array(loginUserSchema),
+});
+
+export const sessionProfileSchema = loginUserSchema;
+
 export const localActorSchema = z.object({
   label: z.string(),
   organization: z.string(),
@@ -127,6 +140,8 @@ export type Approval = z.infer<typeof approvalSchema>;
 export type ProposedChange = z.infer<typeof proposedChangeSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type Conversation = z.infer<typeof conversationSchema>;
+export type LoginUser = z.infer<typeof loginUserSchema>;
+export type SessionProfile = z.infer<typeof sessionProfileSchema>;
 export type LocalActor = z.infer<typeof localActorSchema>;
 
 export const staffActorSchema = z.object({

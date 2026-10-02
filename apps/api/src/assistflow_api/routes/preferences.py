@@ -10,18 +10,20 @@ from assistflow_memory.ports import PreferenceMemory
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
-from assistflow_api.actor import Actor, require_actor
+from assistflow_api.actor import Actor
 from assistflow_api.config import Settings
-from assistflow_api.deps import correlation_id, get_session
+from assistflow_api.deps import correlation_id, get_session, require_customer
 from assistflow_api.turns import memory_ports_for
 
 router = APIRouter()
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
+    401: {"model": Problem},
+    403: {"model": Problem},
     404: {"model": Problem},
 }
 
-DevActor = Annotated[Actor, Depends(require_actor)]
+DevActor = Annotated[Actor, Depends(require_customer)]
 Db = Annotated[Session, Depends(get_session)]
 Correlation = Annotated[str, Depends(correlation_id)]
 

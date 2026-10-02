@@ -2,7 +2,8 @@ import { z } from "zod";
 import {
   conversationPageSchema,
   conversationSchema,
-  localActorListSchema,
+  loginCatalogSchema,
+  sessionProfileSchema,
   approvalSchema,
   messagePageSchema,
   messageSchema,
@@ -10,8 +11,9 @@ import {
   postMessageBodySchema,
   type Approval,
   type Conversation,
-  type LocalActor,
+  type LoginUser,
   type Message,
+  type SessionProfile,
 } from "./schemas";
 
 export class ApiError extends Error {
@@ -23,11 +25,6 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
-
-export type ActorHeaders = {
-  tenantId: string;
-  customerId: string;
-};
 
 async function parseBody<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
   let payload: unknown;
@@ -50,19 +47,14 @@ async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   init: RequestInit = {},
-  actor?: ActorHeaders,
 ): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
-  if (actor) {
-    headers.set("X-Tenant-Id", actor.tenantId);
-    headers.set("X-Customer-Id", actor.customerId);
-  }
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, { ...init, headers });
+    response = await fetch(`/api${path}`, { ...init, headers, credentials: "include" });
   } catch {
     throw new ApiError("We couldn't load this conversation. Check your connection and try again.", 0);
   }
@@ -72,62 +64,57 @@ async function request<T>(
   return parseBody(response, schema);
 }
 
-export function listLocalActors(): Promise<{ actors: LocalActor[] }> {
-  return request("/dev/actors", localActorListSchema);
+export function readSession(): Promise<SessionProfile> {
+  return request("/dev/session", sessionProfileSchema);
 }
 
-export function listConversations(actor: ActorHeaders): Promise<{ items: Conversation[] }> {
-  return request("/conversations?limit=100", conversationPageSchema, {}, actor);
+export function listLoginUsers(): Promise<{ users: LoginUser[] }> {
+  return request("/dev/issuer/users", loginCatalogSchema);
 }
 
-export function createConversation(actor: ActorHeaders, idempotencyKey: string): Promise<Conversation> {
+export function startSession(user: string): Promise<SessionProfile> {
+  return request("/dev/issuer/session", sessionProfileSchema, {
+    method: "POST",
+    body: JSON.stringify({ user }),
+  });
+}
+
+export function listConversations(): Promise<{ items: Conversation[] }> {
+  return request("/conversations?limit=100", conversationPageSchema);
+}
+
+export function createConversation(idempotencyKey: string): Promise<Conversation> {
   const body = openConversationBodySchema.parse({ idempotency_key: idempotencyKey });
-  return request("/conversations", conversationSchema, { method: "POST", body: JSON.stringify(body) }, actor);
+  return request("/conversations", conversationSchema, { method: "POST", body: JSON.stringify(body) });
 }
 
-export function readConversation(actor: ActorHeaders, conversationId: string): Promise<Conversation> {
-  return request(`/conversations/${conversationId}`, conversationSchema, {}, actor);
+export function readConversation(conversationId: string): Promise<Conversation> {
+  return request(`/conversations/${conversationId}`, conversationSchema);
 }
 
-export function readTranscript(actor: ActorHeaders, conversationId: string): Promise<{ items: Message[] }> {
-  return request(
-    `/conversations/${conversationId}/messages?limit=100`,
-    messagePageSchema,
-    {},
-    actor,
-  );
+export function readTranscript(conversationId: string): Promise<{ items: Message[] }> {
+  return request(`/conversations/${conversationId}/messages?limit=100`, messagePageSchema);
 }
 
-export function confirmApproval(
-  actor: ActorHeaders,
-  conversationId: string,
-  approvalId: string,
-): Promise<Approval> {
-  return decide(actor, conversationId, approvalId, "confirm");
+export function confirmApproval(conversationId: string, approvalId: string): Promise<Approval> {
+  return decide(conversationId, approvalId, "confirm");
 }
 
-export function rejectApproval(
-  actor: ActorHeaders,
-  conversationId: string,
-  approvalId: string,
-): Promise<Approval> {
-  return decide(actor, conversationId, approvalId, "reject");
+export function rejectApproval(conversationId: string, approvalId: string): Promise<Approval> {
+  return decide(conversationId, approvalId, "reject");
 }
 
 async function decide(
-  actor: ActorHeaders,
   conversationId: string,
   approvalId: string,
   action: "confirm" | "reject",
 ): Promise<Approval> {
   const headers = new Headers({ "Content-Type": "application/json" });
-  headers.set("X-Tenant-Id", actor.tenantId);
-  headers.set("X-Customer-Id", actor.customerId);
   let response: Response;
   try {
     response = await fetch(
       `/api/conversations/${conversationId}/approvals/${approvalId}/${action}`,
-      { method: "POST", headers, body: "{}" },
+      { method: "POST", headers, body: "{}", credentials: "include" },
     );
   } catch {
     throw new ApiError("We couldn't load this conversation. Check your connection and try again.", 0);
@@ -161,21 +148,19 @@ async function problemMessage(response: Response, action: "confirm" | "reject"):
 }
 
 export async function postMessage(
-  actor: ActorHeaders,
   conversationId: string,
   content: string,
   idempotencyKey: string,
 ): Promise<{ message: Message; conversationId: string }> {
   const body = postMessageBodySchema.parse({ content, idempotency_key: idempotencyKey });
   const headers = new Headers({ "Content-Type": "application/json" });
-  headers.set("X-Tenant-Id", actor.tenantId);
-  headers.set("X-Customer-Id", actor.customerId);
   let response: Response;
   try {
     response = await fetch(`/api/conversations/${conversationId}/messages`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      credentials: "include",
     });
   } catch {
     throw new ApiError("We couldn't load this conversation. Check your connection and try again.", 0);

@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 from assistflow_api.agents import InProcessAgentRunner, build_model_adapter
 from assistflow_api.config import Settings, load_settings
 from assistflow_api.db import create_db_engine
+from assistflow_api.event_queue import InMemoryEventQueue
+from assistflow_api.events import build_publisher, make_handler, publish_outbox
+from assistflow_api.sqlite_lock import lock_for
 
 
 def run_payload(session: Session, settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
@@ -54,14 +57,21 @@ def main() -> None:
     if not isinstance(payload, dict):
         raise ValueError("The turn payload must be a JSON object.")
     engine = create_db_engine(settings.database_url)
+    lock_for(engine)
+    events = InMemoryEventQueue(make_handler(engine, settings))
+    publisher = build_publisher(settings, events)
     try:
         with Session(engine) as session:
             body = run_payload(session, settings, payload)
             session.commit()
+            publish_outbox(session, publisher)
+        json.dump(body, sys.stdout)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        if publisher is events:
+            events.drain()
     finally:
         engine.dispose()
-    json.dump(body, sys.stdout)
-    sys.stdout.write("\n")
 
 
 if __name__ == "__main__":

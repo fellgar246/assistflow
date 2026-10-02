@@ -105,20 +105,27 @@ class MessagePage(BaseModel):
 
 
 class OpenConversation(BaseModel):
-    """Open a web conversation. Tenant and customer come from the dev actor, not this body."""
+    """Open a web conversation.
+
+    The tenant and the customer come from the verified token.
+    A tenant id in this body is ignored.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     idempotency_key: str = Field(min_length=1, max_length=200)
+    tenant_id: UUID | None = None
 
 
 class CustomerMessageCreate(BaseModel):
     """Store a customer message.
 
     The server sets the role. This payload does not select a hosted model.
+    A tenant id in this body is ignored.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(min_length=1, max_length=8000)
     idempotency_key: str = Field(min_length=1, max_length=200)
+    tenant_id: UUID | None = None

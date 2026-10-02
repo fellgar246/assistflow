@@ -20,6 +20,7 @@ from assistflow_conversations.commands import (
     change_conversation_status,
     record_tool_execution,
 )
+from assistflow_conversations.outbox import APPROVAL_CONSUMED, enqueue_event
 from assistflow_conversations.repository import (
     ApprovalRecord,
     ApprovalRepository,
@@ -337,6 +338,16 @@ def consume_approval(
     )
     remaining = ApprovalRepository(session).list_for_conversation(tenant_id, conversation_id)
     _reopen_if_idle(session, tenant_id, conversation_id, actor, remaining)
+    enqueue_event(
+        session,
+        tenant_id=tenant_id,
+        correlation_id=actor.correlation_id,
+        event_name=APPROVAL_CONSUMED,
+        actor_type=actor.actor_type,
+        actor_id=actor.actor_id,
+        entities={"approval_id": record.id, "conversation_id": conversation_id},
+        created_at=current,
+    )
     return updated
 
 

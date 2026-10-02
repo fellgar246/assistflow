@@ -38,23 +38,25 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from assistflow_api.actor import LOCAL_ACTORS, Actor, LocalActorList, require_actor
+from assistflow_api.actor import LOCAL_ACTORS, Actor, LocalActorList
 from assistflow_api.agents import build_agent_runner
 from assistflow_api.approvals import confirm_stored_approval, present_approval
 from assistflow_api.config import ExecutionMode, Settings
-from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
+from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query, require_customer
 from assistflow_api.turns import complete_agent_turn, tool_activity_for
 
 router = APIRouter()
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
     400: {"model": Problem},
+    401: {"model": Problem},
+    403: {"model": Problem},
     404: {"model": Problem},
     409: {"model": Problem},
     422: {"model": Problem},
 }
 
-DevActor = Annotated[Actor, Depends(require_actor)]
+DevActor = Annotated[Actor, Depends(require_customer)]
 Db = Annotated[Session, Depends(get_session)]
 Page = Annotated[PageQuery, Depends(page_query)]
 Correlation = Annotated[str, Depends(correlation_id)]

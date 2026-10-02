@@ -1,20 +1,72 @@
-"""Local development actor.
+"""Verified caller.
 
-Tenant and customer come from request headers. This module does not read a
-tenant id from a request body or from model output. A later identity check
-can replace `require_actor` without changing route code.
+Tenant, role, and customer or agent id come from a checked token.
+Routes do not read those values from a request body.
 """
 
-from typing import Annotated
+from enum import StrEnum
 from uuid import UUID
 
-from assistflow_customers.errors import SupportError
-from fastapi import Header
 from pydantic import BaseModel, ConfigDict
 
 
+class Role(StrEnum):
+    CUSTOMER = "customer"
+    SUPPORT_AGENT = "support_agent"
+
+
+class SeedUser(BaseModel):
+    """A deterministic local person. The login page offers the name, not a tenant id."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    label: str
+    organization: str
+    role: Role
+    tenant_id: UUID
+    customer_id: UUID | None = None
+    agent_id: UUID | None = None
+
+
+SEED_USERS: tuple[SeedUser, ...] = (
+    SeedUser(
+        key="ava-chen",
+        label="Ava Chen",
+        organization="Harbor Goods",
+        role=Role.CUSTOMER,
+        tenant_id=UUID("11111111-1111-4111-8111-111111111111"),
+        customer_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001"),
+    ),
+    SeedUser(
+        key="nora-hale",
+        label="Nora Hale",
+        organization="Harbor Goods",
+        role=Role.SUPPORT_AGENT,
+        tenant_id=UUID("11111111-1111-4111-8111-111111111111"),
+        agent_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001"),
+    ),
+    SeedUser(
+        key="ben-ortiz",
+        label="Ben Ortiz",
+        organization="Fieldline Supply",
+        role=Role.CUSTOMER,
+        tenant_id=UUID("22222222-2222-4222-8222-222222222222"),
+        customer_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002"),
+    ),
+    SeedUser(
+        key="owen-blake",
+        label="Owen Blake",
+        organization="Fieldline Supply",
+        role=Role.SUPPORT_AGENT,
+        tenant_id=UUID("22222222-2222-4222-8222-222222222222"),
+        agent_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0002"),
+    ),
+)
+
+
 class LocalActorOption(BaseModel):
-    """A seeded customer the local UI can act as. Labels are for display."""
+    """A seeded customer the local UI can name. Labels are for display."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -30,24 +82,24 @@ class LocalActorList(BaseModel):
     actors: list[LocalActorOption]
 
 
-LOCAL_ACTORS: tuple[LocalActorOption, ...] = (
-    LocalActorOption(
-        label="Ava Chen",
-        organization="Harbor Goods",
-        tenant_id=UUID("11111111-1111-4111-8111-111111111111"),
-        customer_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001"),
-    ),
-    LocalActorOption(
-        label="Ben Ortiz",
-        organization="Fieldline Supply",
-        tenant_id=UUID("22222222-2222-4222-8222-222222222222"),
-        customer_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002"),
-    ),
+def _customer_option(user: SeedUser) -> LocalActorOption:
+    if user.customer_id is None:
+        raise ValueError("A customer seed is missing a customer id.")
+    return LocalActorOption(
+        label=user.label,
+        organization=user.organization,
+        tenant_id=user.tenant_id,
+        customer_id=user.customer_id,
+    )
+
+
+LOCAL_ACTORS: tuple[LocalActorOption, ...] = tuple(
+    _customer_option(user) for user in SEED_USERS if user.role is Role.CUSTOMER
 )
 
 
 class LocalStaffOption(BaseModel):
-    """A development staff member. This list is not a production directory."""
+    """A seeded support agent. This list is not a production directory."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -63,24 +115,24 @@ class LocalStaffList(BaseModel):
     actors: list[LocalStaffOption]
 
 
-LOCAL_STAFF: tuple[LocalStaffOption, ...] = (
-    LocalStaffOption(
-        label="Nora Hale",
-        organization="Harbor Goods",
-        tenant_id=UUID("11111111-1111-4111-8111-111111111111"),
-        agent_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001"),
-    ),
-    LocalStaffOption(
-        label="Owen Blake",
-        organization="Fieldline Supply",
-        tenant_id=UUID("22222222-2222-4222-8222-222222222222"),
-        agent_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0002"),
-    ),
+def _staff_option(user: SeedUser) -> LocalStaffOption:
+    if user.agent_id is None:
+        raise ValueError("A staff seed is missing an agent id.")
+    return LocalStaffOption(
+        label=user.label,
+        organization=user.organization,
+        tenant_id=user.tenant_id,
+        agent_id=user.agent_id,
+    )
+
+
+LOCAL_STAFF: tuple[LocalStaffOption, ...] = tuple(
+    _staff_option(user) for user in SEED_USERS if user.role is Role.SUPPORT_AGENT
 )
 
 
 class StaffActor(BaseModel):
-    """Development staff caller. Tenant and agent id come from headers."""
+    """Verified support agent. Tenant and agent id come from the token."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -91,58 +143,35 @@ class StaffActor(BaseModel):
 
 
 class Actor(BaseModel):
-    """Server-side caller. Routes use this object instead of body-supplied identity."""
+    """Verified customer. Routes use this object instead of body-supplied identity."""
 
     model_config = ConfigDict(frozen=True)
 
     tenant_id: UUID
     customer_id: UUID
+    role: Role = Role.CUSTOMER
     actor_type: str
     actor_id: UUID
 
 
-def require_tenant_header(x_tenant_id: Annotated[str | None, Header()] = None) -> UUID:
-    """Read the demo tenant header. A missing value is an error."""
-    return _parse_uuid(
-        x_tenant_id,
-        "tenant_required",
-        "A tenant scope is required.",
-        "invalid_tenant",
-        "The tenant id is invalid.",
-    )
+def seed_user(key: str) -> SeedUser | None:
+    """Return one local person by login key."""
+    return next((user for user in SEED_USERS if user.key == key), None)
 
 
-def require_actor(
-    x_tenant_id: Annotated[str | None, Header()] = None,
-    x_customer_id: Annotated[str | None, Header()] = None,
-) -> Actor:
-    """Resolve the local demo customer. Both ids are headers, never model fields."""
-    tenant_id = require_tenant_header(x_tenant_id)
-    customer_id = _parse_uuid(
-        x_customer_id,
-        "customer_required",
-        "A customer scope is required.",
-        "invalid_customer",
-        "The customer id is invalid.",
-    )
-    return Actor(
-        tenant_id=tenant_id,
-        customer_id=customer_id,
-        actor_type="customer",
-        actor_id=customer_id,
-    )
-
-
-def _parse_uuid(
-    raw: str | None,
-    missing_code: str,
-    missing_message: str,
-    invalid_code: str,
-    invalid_message: str,
-) -> UUID:
-    if raw is None or raw.strip() == "":
-        raise SupportError(missing_code, missing_message, 400)
-    try:
-        return UUID(raw.strip())
-    except ValueError as exc:
-        raise SupportError(invalid_code, invalid_message, 400) from exc
+def display_name_for(
+    *,
+    role: Role,
+    tenant_id: UUID,
+    customer_id: UUID | None,
+    agent_id: UUID | None,
+) -> str:
+    """Name a seeded person. Anyone else is labeled without inventing a tenant."""
+    for user in SEED_USERS:
+        if user.role is not role or user.tenant_id != tenant_id:
+            continue
+        if role is Role.CUSTOMER and user.customer_id == customer_id:
+            return user.label
+        if role is Role.SUPPORT_AGENT and user.agent_id == agent_id:
+            return user.label
+    return "Signed in"

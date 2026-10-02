@@ -115,9 +115,11 @@ def test_refund_check_sees_the_reserved_amount(
         create_refund_request(session, HARBOR, "ORD-10482", 1000, "refund-1")
         session.commit()
 
+    from tokens import authorization
+
     response = support_client.get(
         "/orders/ORD-10482/eligibility/refund",
-        headers={"X-Tenant-Id": str(HARBOR)},
+        headers=authorization(support_client, "ava-chen"),
     )
 
     assert response.status_code == 200

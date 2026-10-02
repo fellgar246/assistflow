@@ -64,6 +64,37 @@ variable "enable_schedules" {
   default     = false
 }
 
+variable "enable_cognito" {
+  description = "User pool for sign-in. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "enable_async_workers" {
+  description = "Queue, event bus, and side-effect consumer. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "async_worker_package_path" {
+  description = "Zip for the side-effect consumer. Required only when enable_async_workers is true."
+  type        = string
+  default     = ""
+}
+
+variable "async_worker_package_hash" {
+  description = "Base64 SHA-256 of the side-effect consumer package. Empty leaves the hash unset."
+  type        = string
+  default     = ""
+}
+
+variable "async_worker_database_url" {
+  description = "Database URL for the side-effect consumer. Do not commit a value."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "agentcore_container_image_uri" {
   description = "Image for the hosted runtime. Used only when enable_agentcore is true."
   type        = string

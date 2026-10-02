@@ -10,7 +10,7 @@ When the assistant cannot finish a case, a person on the support team needs the 
 
 ## Decision
 
-Escalated conversations and conversations waiting for confirmation appear in a staff inbox, newest update first, and only for the staff member's tenant. In local mode a development staff actor supplies the tenant and the agent id. Those routes are not available in other execution modes.
+Escalated conversations and conversations waiting for confirmation appear in a staff inbox, newest update first, and only for the staff member's tenant. The tenant and the agent id come from the verified access token. A customer token cannot open the inbox.
 
 Take over records the agent on the conversation and on the linked ticket, and writes a system line that the person joined. A human reply is stored with the assistant role and author type `support_agent`, plus the person's display name. It is not a citation and it does not call a model. Resolve sets the conversation and the linked ticket to resolved. Repeating resolve does not append another close event.
 
@@ -24,4 +24,4 @@ The trace a person can read lists step kind, tool name, status, latency, and an 
 
 - The customer thread and the console show the same lifecycle: escalation, a human reply, confirmation, and resolve.
 - A resolved case cannot grow new customer messages. A new question starts a new conversation.
-- Local development can exercise the console without a sign-in provider. A later identity check can replace the staff header without changing the commands.
+- Local development signs in through the local issuer. The inbox commands do not read a tenant from the request.

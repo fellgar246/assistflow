@@ -1,4 +1,4 @@
-import type { Conversation, LocalActor } from "@/lib/api/schemas";
+import type { Conversation, LoginUser } from "@/lib/api/schemas";
 import { conversationTitle, relativeTime } from "@/lib/chat/format";
 import { StatusBadge } from "@/components/status-badge";
 import Link from "next/link";
@@ -7,9 +7,9 @@ import { EmptyList } from "./states";
 type ConversationListProps = {
   conversations: Conversation[];
   selectedId?: string;
-  actors: LocalActor[];
+  actors: LoginUser[];
   actorId: string | null;
-  onActorChange: (customerId: string) => void;
+  onActorChange: (userKey: string) => void;
   showActorSwitch: boolean;
 };
 
@@ -77,7 +77,7 @@ export function ConversationList({
             className="mt-1 min-h-11 w-full rounded-md border border-strong bg-surface px-2 text-sm text-text focus-visible:ring-2 focus-visible:ring-accent"
           >
             {actors.map((actor) => (
-              <option key={actor.customer_id} value={actor.customer_id}>
+              <option key={actor.key} value={actor.key}>
                 {actor.label}, {actor.organization}
               </option>
             ))}

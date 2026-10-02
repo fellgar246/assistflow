@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 const STAFF = {
+  key: "nora-hale",
   label: "Nora Hale",
   organization: "Harbor Goods",
-  tenant_id: "11111111-1111-4111-8111-111111111111",
+  role: "support_agent" as const,
   agent_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
 };
 
@@ -91,8 +92,12 @@ test("staff can take over, approve, reply, and resolve", async ({ page }) => {
       updated_at: "2026-10-01T18:04:00Z",
     };
 
-    if (path === "/dev/staff" && method === "GET") {
-      await route.fulfill({ json: { actors: [STAFF] } });
+    if (path === "/dev/session" && method === "GET") {
+      await route.fulfill({ json: STAFF });
+      return;
+    }
+    if (path === "/dev/issuer/users" && method === "GET") {
+      await route.fulfill({ json: { users: [STAFF] } });
       return;
     }
     if (path === "/staff/inbox" && method === "GET") {
@@ -265,8 +270,12 @@ test("staff can take over, approve, reply, and resolve", async ({ page }) => {
 test("empty inbox explains that nothing is waiting", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, "");
-    if (path === "/dev/staff") {
-      await route.fulfill({ json: { actors: [STAFF] } });
+    if (path === "/dev/session") {
+      await route.fulfill({ json: STAFF });
+      return;
+    }
+    if (path === "/dev/issuer/users") {
+      await route.fulfill({ json: { users: [STAFF] } });
       return;
     }
     if (path === "/staff/inbox") {

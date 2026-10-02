@@ -82,3 +82,20 @@ module "managed_rag" {
   bucket_arn = module.knowledge_bucket.bucket_arn
   tags       = local.required_tags
 }
+
+module "cognito" {
+  source = "../../modules/cognito"
+
+  enabled = var.enable_cognito
+  tags    = local.required_tags
+}
+
+module "async_workers" {
+  source = "../../modules/async_workers"
+
+  enabled             = var.enable_async_workers
+  worker_package_path = var.async_worker_package_path
+  worker_package_hash = var.async_worker_package_hash
+  database_url        = var.async_worker_database_url
+  tags                = local.required_tags
+}

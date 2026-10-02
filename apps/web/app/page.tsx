@@ -10,6 +10,12 @@ export default function HomePage() {
         </p>
         <div className="mt-6 flex flex-col gap-2">
           <Link
+            href="/login"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-indigo-700 underline"
+          >
+            Sign in
+          </Link>
+          <Link
             href="/chat"
             className="inline-flex min-h-11 items-center text-sm font-medium text-indigo-700 underline"
           >

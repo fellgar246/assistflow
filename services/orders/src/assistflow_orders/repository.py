@@ -67,6 +67,22 @@ class OrderRepository:
             raise SupportError("order_not_found", f"Order {order_number} was not found.", 404)
         return found
 
+    def list_for_customer(
+        self, tenant_id: UUID, customer_id: UUID, *, cursor: str | None, limit: int
+    ) -> RecordPage[OrderRecord]:
+        tenant_id = require_tenant_id(tenant_id)
+        statement = apply_keyset(
+            select(OrderRow).where(
+                OrderRow.tenant_id == tenant_id,
+                OrderRow.customer_id == customer_id,
+            ),
+            OrderRow.created_at,
+            OrderRow.id,
+            decode_cursor(cursor) if cursor else None,
+        )
+        rows = [_order(row) for row in self._session.scalars(statement.limit(limit + 1))]
+        return split_page(rows, limit, lambda item: item.created_at, lambda item: item.id)
+
     def list(self, tenant_id: UUID, *, cursor: str | None, limit: int) -> RecordPage[OrderRecord]:
         tenant_id = require_tenant_id(tenant_id)
         statement = apply_keyset(

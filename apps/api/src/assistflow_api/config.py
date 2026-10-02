@@ -95,6 +95,10 @@ class Settings(BaseModel):
     short_term_memory_enabled: bool = False
     managed_rag_enabled: bool
     local_only_mode: bool
+    async_workers_enabled: bool = False
+    eval_sample_rate: float = 0.05
+    event_bus_name: str = ""
+    event_queue_url: str = ""
     database_url: str
     model_provider: ModelProvider = ModelProvider.MOCK
     bedrock_model_id: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
@@ -132,6 +136,9 @@ class Settings(BaseModel):
     guardrail_sensitive_information_strength: str = "HIGH"
     guardrail_prompt_attack_strength: str = "HIGH"
     guardrail_contextual_grounding_threshold: float | None = None
+    auth_issuer: str = ""
+    auth_audience: str = ""
+    auth_jwks_url: str = ""
 
 
 def repo_root() -> Path:
@@ -167,6 +174,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     rag_provider = _rag_provider(values.get("RAG_PROVIDER"), defaults.rag_provider)
     ai_enabled = _optional_bool(values, "AI_ENABLED", defaults.ai_enabled)
     guardrails_enabled = _optional_bool(values, "GUARDRAILS_ENABLED", False)
+    async_workers_enabled = _optional_bool(values, "ASYNC_WORKERS_ENABLED", False)
 
     if local_only:
         aws_enabled = False
@@ -176,6 +184,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         long_term_memory_enabled = False
         rag_provider = RagProvider.LOCAL
         guardrails_enabled = False
+        async_workers_enabled = False
 
     knowledge_bucket = values.get("KNOWLEDGE_BUCKET", "").strip()
     knowledge_key_prefix = values.get("KNOWLEDGE_KEY_PREFIX", "").strip() or "tenants/{tenant_id}/"
@@ -203,6 +212,10 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         short_term_memory_enabled=short_term_memory_enabled,
         managed_rag_enabled=managed_rag_enabled,
         local_only_mode=local_only,
+        async_workers_enabled=async_workers_enabled,
+        eval_sample_rate=_sample_rate(values),
+        event_bus_name=values.get("EVENT_BUS_NAME", "").strip(),
+        event_queue_url=values.get("EVENT_QUEUE_URL", "").strip(),
         database_url=database_url,
         model_provider=model_provider,
         bedrock_model_id=bedrock_model_id,
@@ -256,6 +269,9 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         guardrail_contextual_grounding_threshold=_optional_threshold(
             values, "GUARDRAIL_CONTEXTUAL_GROUNDING_THRESHOLD"
         ),
+        auth_issuer=values.get("AUTH_ISSUER", "").strip(),
+        auth_audience=values.get("AUTH_AUDIENCE", "").strip(),
+        auth_jwks_url=values.get("AUTH_JWKS_URL", "").strip(),
     )
     validate_retrieval_settings(settings)
     return settings
@@ -356,6 +372,13 @@ def _optional_threshold(values: Mapping[str, str], name: str) -> float | None:
         raise ValueError(f"Invalid number for {name}.") from exc
     if parsed < 0 or parsed > 1:
         raise ValueError(f"Invalid number for {name}.")
+    return parsed
+
+
+def _sample_rate(values: Mapping[str, str]) -> float:
+    parsed = _optional_float(values, "EVAL_SAMPLE_RATE", 0.05)
+    if parsed < 0 or parsed > 1:
+        raise ValueError("Invalid number for EVAL_SAMPLE_RATE.")
     return parsed
 
 

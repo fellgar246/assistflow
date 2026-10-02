@@ -196,3 +196,111 @@ class ApprovalRequestRow(Base):
     approved_by: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
     idempotency_key: Mapped[str] = mapped_column(String(200))
+
+
+class EventOutboxRow(Base):
+    """A domain event written in the business transaction and published after commit."""
+
+    __tablename__ = "event_outbox"
+    __table_args__ = (Index("ix_event_outbox_status_created", "status", "created_at", "id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    correlation_id: Mapped[str] = mapped_column(String(200))
+    event_name: Mapped[str] = mapped_column(String(64))
+    actor_type: Mapped[str] = mapped_column(String(32))
+    actor_id: Mapped[UUID] = mapped_column(Uuid)
+    payload: Mapped[dict[str, str]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(32))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    published_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class SideEffectReceiptRow(Base):
+    """One successful consumer delivery for an event id."""
+
+    __tablename__ = "side_effect_receipts"
+    __table_args__ = (
+        UniqueConstraint(
+            "consumer_name",
+            "event_id",
+            name="uq_side_effect_receipts_consumer_event",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    consumer_name: Mapped[str] = mapped_column(String(64))
+    event_id: Mapped[UUID] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class NotificationRow(Base):
+    """In-app notice a console can list later. It does not store a raw model payload."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_notifications_event_id"),
+        Index("ix_notifications_tenant_created", "tenant_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    event_id: Mapped[UUID] = mapped_column(Uuid)
+    event_name: Mapped[str] = mapped_column(String(64))
+    summary: Mapped[str] = mapped_column(String(500))
+    conversation_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    ticket_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class NotificationEmailRow(Base):
+    """A logged email notice. No mailbox provider is called."""
+
+    __tablename__ = "notification_emails"
+    __table_args__ = (UniqueConstraint("event_id", name="uq_notification_emails_event_id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    event_id: Mapped[UUID] = mapped_column(Uuid)
+    body: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class ConversationSummaryRow(Base):
+    """Short text stored after a conversation is resolved."""
+
+    __tablename__ = "conversation_summaries"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_conversation_summaries_event_id"),
+        Index(
+            "ix_conversation_summaries_tenant_conversation",
+            "tenant_id",
+            "conversation_id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    conversation_id: Mapped[UUID] = mapped_column(Uuid)
+    event_id: Mapped[UUID] = mapped_column(Uuid)
+    summary: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class EvaluationIntakeRow(Base):
+    """A resolved conversation marked for later evaluation intake."""
+
+    __tablename__ = "evaluation_intake"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_evaluation_intake_event_id"),
+        Index("ix_evaluation_intake_tenant_created", "tenant_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid)
+    conversation_id: Mapped[UUID] = mapped_column(Uuid)
+    event_id: Mapped[UUID] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)

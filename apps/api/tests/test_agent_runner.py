@@ -216,11 +216,9 @@ def test_history_window_keeps_the_newest_messages() -> None:
 def test_enabled_assistant_stores_a_reply_and_a_trace(
     support_client: TestClient, support_engine: Engine
 ) -> None:
-    headers = {
-        "X-Tenant-Id": str(HARBOR),
-        "X-Customer-Id": str(HARBOR_CUSTOMER),
-        "X-Correlation-Id": "corr-agent-route",
-    }
+    from tokens import customer_headers
+
+    headers = customer_headers(support_client, HARBOR, HARBOR_CUSTOMER, "corr-agent-route")
     created = support_client.post(
         "/conversations",
         headers=headers,

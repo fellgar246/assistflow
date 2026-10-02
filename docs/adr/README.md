@@ -17,3 +17,5 @@
 | [0013](0013-customer-approvals-expire.md) | Customer approvals expire and bind one arguments hash |
 | [0014](0014-session-memory-is-separate-from-the-transcript.md) | Session memory is separate from the transcript |
 | [0015](0015-human-and-assistant-share-a-conversation.md) | A person and the assistant share one conversation |
+| [0016](0016-side-effects-run-after-the-response.md) | Side effects run after the response |
+| [0017](0017-tenant-comes-from-the-verified-token.md) | The tenant comes from the verified token |

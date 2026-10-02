@@ -6,12 +6,14 @@ AssistFlow separates a proposal from an authorized change. The model may suggest
 
 1. The agent proposes a tool call.
 2. The application validates the tool schema.
-3. The application checks identity and tenant.
+3. The application checks identity and tenant. The tenant and role come from the verified access token, not from the request body.
 4. The application checks business policy.
 5. The application classifies risk.
 6. If that risk tier requires approval, execution waits for a valid, unexpired approval bound to the exact tool name and canonical arguments.
 7. The application runs an idempotent command in the business service.
 8. The application records an audit event.
+
+Creating a ticket, escalating a conversation, consuming an approval, and resolving a conversation also store an outbox row in that same transaction. The response returns before any consumer runs. Publishing happens after the commit. A publish failure is logged and the row stays for a later attempt. The business change stays committed. Locally an in-process queue drains the row on a background task. The same handlers write an in-app notice, a fan-out audit row, a short summary when a conversation resolves, and a marker on a configured fraction of resolved conversations for later evaluation. A second delivery of the same event id does not repeat those writes. A summary failure leaves the conversation resolved. The notice email is a log line. An EventBridge or SQS client is constructed only when AWS and async workers are both enabled. `LOCAL_ONLY_MODE=true` forces the in-process queue. Terraform leaves the queue, the bus, and the consumer uncreated until `enable_async_workers` is true.
 
 Model text does not mutate orders, shipments, refunds, addresses, or accounts. Retrieved policy prose does not authorize a write by itself. The same allowlist applies to the local gateway and the hosted gateway. A document chunk is wrapped before the model sees it, and a verbatim copy of the prompt is not returned to the customer.
 
@@ -26,7 +28,7 @@ Low-risk writes — opening a ticket, adding a ticket note, and escalating a con
 The default execution profile is local:
 
 - the web app, the API, and PostgreSQL run on the developer machine;
-- AWS, the hosted agent, the hosted model, managed retrieval, and long-term memory are off;
+- AWS, the hosted agent, the hosted model, managed retrieval, long-term memory, and async workers are off;
 - cloud adapters stay behind interfaces and are not imported while AWS is disabled;
 - the in-process assistant proposes tool calls, writes a trace, and does not import a hosted-model SDK.
 

@@ -182,9 +182,16 @@ class TicketPage(BaseModel):
 
 
 class TicketCreate(BaseModel):
+    """Create a ticket.
+
+    The tenant and the customer come from the verified token.
+    A tenant id in this body is ignored.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     customer_id: UUID
+    tenant_id: UUID | None = None
     priority: TicketPriority
     category: TicketCategory
     summary: str = Field(min_length=1, max_length=500)

@@ -5,12 +5,11 @@ import { Composer } from "@/components/chat/composer";
 import { ErrorPanel } from "@/components/chat/states";
 import { Transcript, TranscriptSkeleton } from "@/components/chat/transcript";
 import { StatusBadge } from "@/components/status-badge";
-import { ApiError } from "@/lib/api/client";
-import type { StaffActor, StaffConversation } from "@/lib/api/schemas";
+import { ApiError, listLoginUsers, readSession, startSession } from "@/lib/api/client";
+import type { LoginUser, StaffConversation } from "@/lib/api/schemas";
 import {
   confirmAsStaff,
   listInbox,
-  listStaffActors,
   postStaffReply,
   readStaffConversation,
   readStaffTranscript,
@@ -22,11 +21,10 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { EmptyInbox, InboxList } from "./inbox-list";
 import { TracePanel } from "./trace-panel";
-
-const STAFF_KEY = "assistflow.localStaff";
 
 type AgentConsoleProps = {
   conversationId?: string;
@@ -34,16 +32,8 @@ type AgentConsoleProps = {
 
 type Queue = "all" | "escalated" | "waiting_approval";
 
-function subscribe(onStoreChange: () => void): () => void {
-  window.addEventListener("assistflow-staff", onStoreChange);
-  return () => window.removeEventListener("assistflow-staff", onStoreChange);
-}
-
-function readStaffId(): string | null {
-  return window.localStorage.getItem(STAFF_KEY);
-}
-
 export function AgentConsole({ conversationId }: AgentConsoleProps) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [queue, setQueue] = useState<Queue>("all");
@@ -57,37 +47,55 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<"confirm" | "reject" | null>(null);
   const [approvalError, setApprovalError] = useState<{ id: string; message: string } | null>(null);
-  const staffId = useSyncExternalStore(subscribe, readStaffId, () => null);
-
-  const actorsQuery = useQuery({
-    queryKey: ["staff-actors"],
-    queryFn: listStaffActors,
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: readSession,
     retry: false,
   });
-  const actors = actorsQuery.data?.actors ?? [];
-  const staff = actors.find((item) => item.agent_id === staffId) ?? actors[0] ?? null;
-  const headers = staff ? { tenantId: staff.tenant_id, agentId: staff.agent_id } : null;
+  const usersQuery = useQuery({
+    queryKey: ["login-users"],
+    queryFn: listLoginUsers,
+    retry: false,
+    enabled: sessionQuery.isSuccess,
+  });
+  const session = sessionQuery.data ?? null;
+  const actors = (usersQuery.data?.users ?? []).filter((user) => user.role === "support_agent");
+  const signedIn = session?.role === "support_agent";
+
+  function selectAccount(userKey: string) {
+    void startSession(userKey).then(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["session"] });
+      await queryClient.invalidateQueries({ queryKey: ["staff-inbox"] });
+      router.push("/agent/inbox");
+    });
+  }
+
+  useEffect(() => {
+    if (sessionQuery.isError && sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401) {
+      router.replace("/login");
+    }
+  }, [router, sessionQuery.error, sessionQuery.isError]);
 
   const inboxQuery = useQuery({
-    queryKey: ["staff-inbox", headers?.agentId, queue],
-    queryFn: () => listInbox(headers!, queue),
-    enabled: headers !== null,
+    queryKey: ["staff-inbox", session?.key, queue],
+    queryFn: () => listInbox(queue),
+    enabled: signedIn,
   });
 
   const conversationQuery = useQuery({
-    queryKey: ["staff-conversation", conversationId, headers?.agentId],
-    queryFn: () => readStaffConversation(headers!, conversationId!),
-    enabled: headers !== null && conversationId !== undefined,
+    queryKey: ["staff-conversation", conversationId, session?.key],
+    queryFn: () => readStaffConversation(conversationId!),
+    enabled: signedIn && conversationId !== undefined,
   });
   const transcriptQuery = useQuery({
-    queryKey: ["staff-transcript", conversationId, headers?.agentId],
-    queryFn: () => readStaffTranscript(headers!, conversationId!),
-    enabled: headers !== null && conversationId !== undefined,
+    queryKey: ["staff-transcript", conversationId, session?.key],
+    queryFn: () => readStaffTranscript(conversationId!),
+    enabled: signedIn && conversationId !== undefined,
   });
   const traceQuery = useQuery({
-    queryKey: ["staff-trace", conversationId, headers?.agentId],
-    queryFn: () => readTrace(headers!, conversationId!),
-    enabled: headers !== null && conversationId !== undefined && tab === "trace",
+    queryKey: ["staff-trace", conversationId, session?.key],
+    queryFn: () => readTrace(conversationId!),
+    enabled: signedIn && conversationId !== undefined && tab === "trace",
   });
 
   useEffect(() => {
@@ -96,22 +104,22 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
     }
   }, [conversationId, conversationQuery.data]);
 
-  const pageKey = `${headers?.agentId ?? ""}:${queue}`;
+  const pageKey = `${session?.key ?? ""}:${queue}`;
   const extraPage = extra.key === pageKey ? extra : { key: pageKey, loaded: [], cursor: undefined };
   const items = mergeInbox(inboxQuery.data?.items ?? [], extraPage.loaded);
   const nextCursor =
     extraPage.cursor === undefined ? (inboxQuery.data?.next_cursor ?? null) : extraPage.cursor;
   const conversation = conversationQuery.data;
-  const assignedToMe = Boolean(staff && conversation?.assigned_to === staff.agent_id);
+  const assignedToMe = Boolean(session && conversation?.assignee_name === session.label);
 
   const takeOverMutation = useMutation({
-    mutationFn: () => takeOver(headers!, conversationId!, crypto.randomUUID()),
+    mutationFn: () => takeOver(conversationId!, crypto.randomUUID()),
     onSuccess: async () => {
       await refresh(queryClient, conversationId);
     },
   });
   const resolveMutation = useMutation({
-    mutationFn: () => resolveConversation(headers!, conversationId!, crypto.randomUUID()),
+    mutationFn: () => resolveConversation(conversationId!, crypto.randomUUID()),
     onSuccess: async () => {
       setConfirmingResolve(false);
       await refresh(queryClient, conversationId);
@@ -119,17 +127,17 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
   });
   const replyMutation = useMutation({
     mutationFn: (content: string) =>
-      postStaffReply(headers!, conversationId!, content, crypto.randomUUID()),
+      postStaffReply(conversationId!, content, crypto.randomUUID()),
     onSuccess: async () => {
       await refresh(queryClient, conversationId);
     },
   });
 
   async function loadMore() {
-    if (!headers || !nextCursor) {
+    if (!signedIn || !nextCursor) {
       return;
     }
-    const page = await listInbox(headers, queue, nextCursor);
+    const page = await listInbox(queue, nextCursor);
     setExtra({
       key: pageKey,
       loaded: mergeInbox(extraPage.loaded, page.items),
@@ -138,7 +146,7 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
   }
 
   async function decide(approvalId: string, action: "confirm" | "reject") {
-    if (!headers || !conversationId || busyApprovalId) {
+    if (!signedIn || !conversationId || busyApprovalId) {
       return;
     }
     setBusyApprovalId(approvalId);
@@ -146,9 +154,9 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
     setApprovalError(null);
     try {
       if (action === "confirm") {
-        await confirmAsStaff(headers, conversationId, approvalId);
+        await confirmAsStaff(conversationId, approvalId);
       } else {
-        await rejectAsStaff(headers, conversationId, approvalId);
+        await rejectAsStaff(conversationId, approvalId);
       }
       await refresh(queryClient, conversationId);
     } catch (error) {
@@ -160,7 +168,15 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
     }
   }
 
-  if (actorsQuery.isError && isNotFound(actorsQuery.error)) {
+  if (sessionQuery.isLoading || (sessionQuery.isError && sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401)) {
+    return (
+      <main className="flex h-dvh items-center justify-center px-6">
+        <p className="text-sm text-muted">Loading…</p>
+      </main>
+    );
+  }
+
+  if (!signedIn) {
     return (
       <main className="flex h-dvh items-center justify-center px-6">
         <h1 className="text-xl font-semibold text-text">You don&apos;t have access to this page.</h1>
@@ -171,7 +187,7 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
   const failed = conversationQuery.isError || transcriptQuery.isError;
   const approvals = (transcriptQuery.data?.items ?? []).flatMap((message) => message.approvals);
   const approverName = (approvedBy: string | null | undefined) =>
-    actors.find((item) => item.agent_id === approvedBy)?.label.split(" ")[0];
+    approvedBy && session ? session.label.split(" ")[0] : undefined;
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
@@ -184,7 +200,7 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
       <header className="flex items-center justify-between gap-3 border-b border-default bg-surface px-4 py-3">
         <p className="text-base font-semibold text-text">AssistFlow</p>
         <p className="rounded-md border border-dashed border-warning bg-warning-soft px-2 py-1 text-xs font-medium text-warning">
-          Development staff{staff ? ` · ${staff.label}` : ""}
+          Development staff{session ? ` · ${session.label}` : ""}
         </p>
       </header>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
@@ -233,7 +249,7 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
             </button>
           ) : null}
           {actors.length > 0 ? (
-            <StaffSwitch actors={actors} staff={staff} onChange={selectStaff} />
+            <StaffSwitch actors={actors} currentKey={session?.key ?? null} onChange={selectAccount} />
           ) : null}
         </nav>
         <main
@@ -294,7 +310,7 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
                     {!assignedToMe ? (
                       <button
                         type="button"
-                        disabled={takeOverMutation.isPending || headers === null}
+                        disabled={takeOverMutation.isPending || !signedIn}
                         onClick={() => takeOverMutation.mutate()}
                         className="inline-flex min-h-8 items-center rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:opacity-50"
                       >
@@ -332,12 +348,12 @@ export function AgentConsole({ conversationId }: AgentConsoleProps) {
                 <Composer
                   placeholder="Write a reply the customer will see"
                   footer={
-                    staff
-                      ? `Replying as ${staff.label} · visible to the customer`
+                    session
+                      ? `Replying as ${session.label} · visible to the customer`
                       : null
                   }
                   sending={replyMutation.isPending}
-                  disabled={!assignedToMe || conversation?.status === "resolved" || headers === null}
+                  disabled={!assignedToMe || conversation?.status === "resolved" || !signedIn}
                   onSend={(content) => replyMutation.mutate(content)}
                 />
               </div>
@@ -458,12 +474,12 @@ function QueueTab({
 
 function StaffSwitch({
   actors,
-  staff,
+  currentKey,
   onChange,
 }: {
-  actors: StaffActor[];
-  staff: StaffActor | null;
-  onChange: (agentId: string) => void;
+  actors: LoginUser[];
+  currentKey: string | null;
+  onChange: (userKey: string) => void;
 }) {
   return (
     <div className="m-3 rounded-lg border border-dashed border-warning bg-warning-soft p-3">
@@ -473,23 +489,18 @@ function StaffSwitch({
       </label>
       <select
         id="dev-staff"
-        value={staff?.agent_id ?? ""}
+        value={currentKey ?? ""}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 min-h-8 w-full rounded-md border border-strong bg-surface px-2 text-sm text-text focus-visible:ring-2 focus-visible:ring-accent"
       >
         {actors.map((actor) => (
-          <option key={actor.agent_id} value={actor.agent_id}>
+          <option key={actor.key} value={actor.key}>
             {actor.label} · {actor.organization}
           </option>
         ))}
       </select>
     </div>
   );
-}
-
-function selectStaff(agentId: string) {
-  window.localStorage.setItem(STAFF_KEY, agentId);
-  window.dispatchEvent(new Event("assistflow-staff"));
 }
 
 function mergeInbox(first: StaffConversation[], second: StaffConversation[]): StaffConversation[] {
@@ -513,8 +524,4 @@ async function refresh(
   await queryClient.invalidateQueries({ queryKey: ["staff-conversation", conversationId] });
   await queryClient.invalidateQueries({ queryKey: ["staff-transcript", conversationId] });
   await queryClient.invalidateQueries({ queryKey: ["staff-trace", conversationId] });
-}
-
-function isNotFound(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404;
 }

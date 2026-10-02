@@ -28,7 +28,7 @@ def test_address_change_waits_until_confirm_and_does_not_repeat(
     before = _line1(support_engine)
     asked = support_client.post(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(),
+        headers=_headers(support_client),
         json={
             "content": (
                 "Please change the delivery address for ORD-10482\n"
@@ -45,11 +45,11 @@ def test_address_change_waits_until_confirm_and_does_not_repeat(
     assert asked.status_code == 201
     conversation = support_client.get(
         f"/conversations/{conversation_id}",
-        headers=_headers(),
+        headers=_headers(support_client),
     )
     transcript = support_client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(),
+        headers=_headers(support_client),
     )
     approval = _approval(transcript.json())
     change = approval["proposed_change"]
@@ -65,12 +65,12 @@ def test_address_change_waits_until_confirm_and_does_not_repeat(
 
     confirmed = support_client.post(
         f"/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_headers("confirm-1"),
+        headers=_headers(support_client, "confirm-1"),
         json={},
     )
     again = support_client.post(
         f"/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_headers("confirm-2"),
+        headers=_headers(support_client, "confirm-2"),
         json={},
     )
 
@@ -92,7 +92,7 @@ def test_confirm_ignores_a_client_supplied_address(
     before = _line1(support_engine)
     rejected = support_client.post(
         f"/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_headers(),
+        headers=_headers(support_client),
         json={
             "new_address": {
                 "recipient": "Someone Else",
@@ -119,7 +119,7 @@ def test_expired_confirm_does_not_change_the_address(
     _expire(support_engine, approval["id"])
     confirmed = support_client.post(
         f"/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_headers(),
+        headers=_headers(support_client),
         json={},
     )
 
@@ -149,7 +149,7 @@ def test_hash_mismatch_denies_execution(support_client: TestClient, support_engi
         session.commit()
     confirmed = support_client.post(
         f"/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_headers(),
+        headers=_headers(support_client),
         json={},
     )
 
@@ -167,10 +167,13 @@ def test_cancel_leaves_the_address_unchanged(
     before = _line1(support_engine)
     cancelled = support_client.post(
         f"/conversations/{conversation_id}/approvals/{approval['id']}/reject",
-        headers=_headers(),
+        headers=_headers(support_client),
         json={},
     )
-    conversation = support_client.get(f"/conversations/{conversation_id}", headers=_headers())
+    conversation = support_client.get(
+        f"/conversations/{conversation_id}",
+        headers=_headers(support_client),
+    )
 
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "rejected"
@@ -187,7 +190,7 @@ def test_another_customer_cannot_confirm(
     before = _line1(support_engine)
     denied = support_client.post(
         f"/conversations/{conversation_id}/approvals/{approval['id']}/confirm",
-        headers=_headers(tenant=FIELDLINE, customer=FIELDLINE_CUSTOMER),
+        headers=_headers(support_client, tenant=FIELDLINE, customer=FIELDLINE_CUSTOMER),
         json={},
     )
 
@@ -212,7 +215,7 @@ def test_refund_and_return_use_the_same_confirmation(
     assert "card" not in str(refund_change).lower()
     confirmed = support_client.post(
         f"/conversations/{refund_conversation}/approvals/{refund_approval['id']}/confirm",
-        headers=_headers(),
+        headers=_headers(support_client),
         json={},
     )
     assert confirmed.status_code == 200
@@ -234,7 +237,7 @@ def test_refund_and_return_use_the_same_confirmation(
     assert return_approval["proposed_change"]["reason_label"] == "Damaged"
     started = support_client.post(
         f"/conversations/{return_conversation}/approvals/{return_approval['id']}/confirm",
-        headers=_headers(tenant=FIELDLINE, customer=FIELDLINE_CUSTOMER),
+        headers=_headers(support_client, tenant=FIELDLINE, customer=FIELDLINE_CUSTOMER),
         json={},
     )
     assert started.status_code == 200
@@ -250,7 +253,7 @@ def _open(
 ) -> str:
     created = client.post(
         "/conversations",
-        headers=_headers(tenant=tenant, customer=customer),
+        headers=_headers(client, tenant=tenant, customer=customer),
         json={"idempotency_key": key},
     )
     assert created.status_code == 201
@@ -277,13 +280,13 @@ def _propose(
 ) -> dict[str, Any]:
     posted = client.post(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(tenant=tenant, customer=customer),
+        headers=_headers(client, tenant=tenant, customer=customer),
         json={"content": content, "idempotency_key": key},
     )
     assert posted.status_code == 201, posted.text
     transcript = client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(tenant=tenant, customer=customer),
+        headers=_headers(client, tenant=tenant, customer=customer),
     )
     assert transcript.status_code == 200
     return _approval(transcript.json())
@@ -303,16 +306,15 @@ def _approval(page: dict[str, Any]) -> dict[str, Any]:
 
 
 def _headers(
+    client: TestClient,
     correlation: str = "corr-approval",
     *,
     tenant: UUID = HARBOR,
     customer: UUID = HARBOR_CUSTOMER,
 ) -> dict[str, str]:
-    return {
-        "X-Tenant-Id": str(tenant),
-        "X-Customer-Id": str(customer),
-        "X-Correlation-Id": correlation,
-    }
+    from tokens import customer_headers
+
+    return customer_headers(client, tenant, customer, correlation)
 
 
 def _line1(engine: Engine) -> str:

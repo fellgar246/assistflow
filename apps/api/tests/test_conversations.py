@@ -20,10 +20,12 @@ from sqlalchemy.orm import Session
 from assistflow_api.config import load_settings
 from assistflow_api.main import create_app
 from assistflow_api.replay import replay_conversation
+from tokens import customer_headers, remote_settings
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 FIELDLINE = UUID("22222222-2222-4222-8222-222222222222")
 HARBOR_CUSTOMER = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001")
+FIELDLINE_CUSTOMER = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002")
 CORRELATION = "corr-conversation-1"
 
 
@@ -35,11 +37,8 @@ def _customer_actor(correlation: str) -> ActorContext:
     )
 
 
-def _headers(tenant_id: UUID, customer_id: UUID | None = None) -> dict[str, str]:
-    headers = {"X-Tenant-Id": str(tenant_id), "X-Correlation-Id": CORRELATION}
-    if customer_id is not None:
-        headers["X-Customer-Id"] = str(customer_id)
-    return headers
+def _headers(client: TestClient, tenant_id: UUID, customer_id: UUID) -> dict[str, str]:
+    return customer_headers(client, tenant_id, customer_id, CORRELATION)
 
 
 def test_audit_payload_drops_tokens_and_marks_truncation() -> None:
@@ -61,7 +60,7 @@ def test_audit_payload_drops_tokens_and_marks_truncation() -> None:
 def test_conversation_is_stored_and_replayed_in_order(
     support_client: TestClient, support_engine: Engine
 ) -> None:
-    headers = _headers(HARBOR, HARBOR_CUSTOMER)
+    headers = _headers(support_client, HARBOR, HARBOR_CUSTOMER)
     created = support_client.post(
         "/conversations",
         headers=headers,
@@ -78,7 +77,12 @@ def test_conversation_is_stored_and_replayed_in_order(
         headers=headers,
         json={"idempotency_key": "conv-2", "tenant_id": str(FIELDLINE)},
     )
-    assert rejected.status_code == 422
+    assert rejected.status_code == 201
+    hidden_body = support_client.get(
+        "/conversations",
+        headers=_headers(support_client, FIELDLINE, FIELDLINE_CUSTOMER),
+    )
+    assert rejected.json()["id"] not in [item["id"] for item in hidden_body.json()["items"]]
 
     customer = support_client.post(
         f"/conversations/{conversation_id}/messages",
@@ -121,11 +125,14 @@ def test_conversation_is_stored_and_replayed_in_order(
 
     listed = support_client.get("/conversations", headers=headers)
     assert listed.status_code == 200
-    assert [item["id"] for item in listed.json()["items"]] == [conversation_id]
+    assert [item["id"] for item in listed.json()["items"]] == [
+        conversation_id,
+        rejected.json()["id"],
+    ]
 
     hidden = support_client.get(
         f"/conversations/{conversation_id}/messages",
-        headers=_headers(FIELDLINE, HARBOR_CUSTOMER),
+        headers=_headers(support_client, FIELDLINE, FIELDLINE_CUSTOMER),
     )
     assert hidden.status_code == 404
     assert hidden.json()["code"] == "conversation_not_found"
@@ -134,7 +141,7 @@ def test_conversation_is_stored_and_replayed_in_order(
 def test_ticket_links_to_the_conversation_inside_the_tenant(
     support_client: TestClient, support_engine: Engine
 ) -> None:
-    headers = _headers(HARBOR, HARBOR_CUSTOMER)
+    headers = _headers(support_client, HARBOR, HARBOR_CUSTOMER)
     created = support_client.post(
         "/conversations",
         headers=headers,
@@ -143,7 +150,7 @@ def test_ticket_links_to_the_conversation_inside_the_tenant(
     conversation_id = created.json()["id"]
     ticket = support_client.post(
         "/tickets",
-        headers={"X-Tenant-Id": str(HARBOR), "X-Correlation-Id": CORRELATION},
+        headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER),
         json={
             "customer_id": str(HARBOR_CUSTOMER),
             "priority": "normal",
@@ -156,17 +163,19 @@ def test_ticket_links_to_the_conversation_inside_the_tenant(
     assert ticket.status_code == 201
     assert ticket.json()["conversation_id"] == conversation_id
 
-    listed = support_client.get("/tickets", headers={"X-Tenant-Id": str(HARBOR)})
+    listed = support_client.get(
+        "/tickets", headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER)
+    )
     assert any(item["id"] == ticket.json()["id"] for item in listed.json()["items"])
 
     opened = support_client.get(
         f"/tickets/{ticket.json()['id']}",
-        headers={"X-Tenant-Id": str(HARBOR)},
+        headers=_headers(support_client, HARBOR, HARBOR_CUSTOMER),
     )
     assert opened.status_code == 200
     other = support_client.get(
         f"/tickets/{ticket.json()['id']}",
-        headers={"X-Tenant-Id": str(FIELDLINE)},
+        headers=_headers(support_client, FIELDLINE, FIELDLINE_CUSTOMER),
     )
     assert other.status_code == 404
     assert other.json()["code"] == "ticket_not_found"
@@ -190,7 +199,7 @@ def test_acknowledgement_is_stored_once_and_states_no_order_fact(
 ) -> None:
     app = create_app(load_settings({"AI_ENABLED": "false"}), engine=support_engine)
     with TestClient(app) as support_client:
-        headers = _headers(HARBOR, HARBOR_CUSTOMER)
+        headers = _headers(support_client, HARBOR, HARBOR_CUSTOMER)
         created = support_client.post(
             "/conversations",
             headers=headers,
@@ -231,7 +240,7 @@ def test_local_actor_list_is_hidden_outside_local_mode(support_engine: Engine) -
     labels = [item["label"] for item in listed.json()["actors"]]
     assert labels == ["Ava Chen", "Ben Ortiz"]
 
-    remote = create_app(load_settings({"EXECUTION_MODE": "aws-demo"}), engine=support_engine)
+    remote = create_app(load_settings(remote_settings()), engine=support_engine)
     with TestClient(remote) as client:
         hidden = client.get("/dev/actors")
     assert hidden.status_code == 404

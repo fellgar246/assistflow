@@ -43,6 +43,12 @@ def test_support_migration_applies_and_downgrades(
         "approval_requests",
         "session_memory_events",
         "memory_preferences",
+        "event_outbox",
+        "side_effect_receipts",
+        "notifications",
+        "notification_emails",
+        "conversation_summaries",
+        "evaluation_intake",
     } <= names
     columns = {column["name"] for column in inspect(engine).get_columns("orders")}
     assert "tenant_id" in columns

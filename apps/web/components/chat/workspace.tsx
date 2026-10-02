@@ -5,11 +5,13 @@ import {
   confirmApproval,
   createConversation,
   listConversations,
-  listLocalActors,
+  listLoginUsers,
   postMessage,
   readConversation,
+  readSession,
   readTranscript,
   rejectApproval,
+  startSession,
 } from "@/lib/api/client";
 import { conversationTitle } from "@/lib/chat/format";
 import { StatusBadge } from "@/components/status-badge";
@@ -17,26 +19,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Composer } from "./composer";
 import { ConversationList } from "./conversation-list";
 import { EmptyThread, ErrorPanel, ListSkeleton } from "./states";
 import { Transcript, TranscriptSkeleton } from "./transcript";
 
-const ACTOR_KEY = "assistflow.localActor";
-
 type WorkspaceProps = {
   conversationId?: string;
 };
-
-function subscribeToActor(onStoreChange: () => void): () => void {
-  window.addEventListener("assistflow-actor", onStoreChange);
-  return () => window.removeEventListener("assistflow-actor", onStoreChange);
-}
-
-function readActorId(): string | null {
-  return window.localStorage.getItem(ACTOR_KEY);
-}
 
 export function ChatWorkspace({ conversationId }: WorkspaceProps) {
   const router = useRouter();
@@ -47,44 +38,60 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<"confirm" | "reject" | null>(null);
   const [approvalError, setApprovalError] = useState<{ id: string; message: string } | null>(null);
-  const actorId = useSyncExternalStore(subscribeToActor, readActorId, () => null);
 
-  const actorsQuery = useQuery({
-    queryKey: ["local-actors"],
-    queryFn: listLocalActors,
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: readSession,
     retry: false,
   });
-  const actors = actorsQuery.data?.actors ?? [];
-  const showActorSwitch = actorsQuery.isSuccess && actors.length > 0;
-  const actor = actors.find((item) => item.customer_id === actorId) ?? actors[0] ?? null;
+  const usersQuery = useQuery({
+    queryKey: ["login-users"],
+    queryFn: listLoginUsers,
+    retry: false,
+    enabled: sessionQuery.isSuccess,
+  });
+  const session = sessionQuery.data ?? null;
+  const actors = (usersQuery.data?.users ?? []).filter((user) => user.role === "customer");
+  const showActorSwitch = actors.length > 1;
+  const signedIn = session?.role === "customer";
 
-  function selectActor(customerId: string) {
-    window.localStorage.setItem(ACTOR_KEY, customerId);
-    window.dispatchEvent(new Event("assistflow-actor"));
-    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    void queryClient.invalidateQueries({ queryKey: ["transcript"] });
+  useEffect(() => {
+    if (sessionQuery.isError && sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401) {
+      router.replace("/login");
+    }
+  }, [router, sessionQuery.error, sessionQuery.isError]);
+
+  useEffect(() => {
+    if (session?.role === "support_agent") {
+      router.replace("/agent/inbox");
+    }
+  }, [router, session?.role]);
+
+  function selectActor(userKey: string) {
+    void startSession(userKey).then(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["session"] });
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      await queryClient.invalidateQueries({ queryKey: ["transcript"] });
+      router.push("/chat");
+    });
   }
 
-  const headers = actor
-    ? { tenantId: actor.tenant_id, customerId: actor.customer_id }
-    : null;
-
   const listQuery = useQuery({
-    queryKey: ["conversations", headers?.customerId],
-    queryFn: () => listConversations(headers!),
-    enabled: headers !== null,
+    queryKey: ["conversations", session?.key],
+    queryFn: () => listConversations(),
+    enabled: signedIn,
   });
 
   const conversationQuery = useQuery({
-    queryKey: ["conversation", conversationId, headers?.customerId],
-    queryFn: () => readConversation(headers!, conversationId!),
-    enabled: headers !== null && conversationId !== undefined,
+    queryKey: ["conversation", conversationId, session?.key],
+    queryFn: () => readConversation(conversationId!),
+    enabled: signedIn && conversationId !== undefined,
   });
 
   const transcriptQuery = useQuery({
-    queryKey: ["transcript", conversationId, headers?.customerId],
-    queryFn: () => readTranscript(headers!, conversationId!),
-    enabled: headers !== null && conversationId !== undefined,
+    queryKey: ["transcript", conversationId, session?.key],
+    queryFn: () => readTranscript(conversationId!),
+    enabled: signedIn && conversationId !== undefined,
   });
 
   useEffect(() => {
@@ -95,11 +102,11 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
 
   const createMutation = useMutation({
     mutationFn: async (content: string) => {
-      if (!headers) {
-        throw new Error("No local customer is selected.");
+      if (!signedIn) {
+        throw new Error("Sign in is required.");
       }
-      const conversation = await createConversation(headers, crypto.randomUUID());
-      const posted = await postMessage(headers, conversation.id, content, crypto.randomUUID());
+      const conversation = await createConversation(crypto.randomUUID());
+      const posted = await postMessage(conversation.id, content, crypto.randomUUID());
       return posted.conversationId;
     },
     onSuccess: async (id) => {
@@ -110,10 +117,10 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
 
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
-      if (!headers || !conversationId) {
+      if (!signedIn || !conversationId) {
         throw new Error("No conversation is open.");
       }
-      const posted = await postMessage(headers, conversationId, content, crypto.randomUUID());
+      const posted = await postMessage(conversationId, content, crypto.randomUUID());
       return posted.conversationId;
     },
     onSuccess: async (id) => {
@@ -127,7 +134,7 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
   });
 
   async function decide(approvalId: string, action: "confirm" | "reject") {
-    if (!headers || !conversationId || decidingRef.current) {
+    if (!signedIn || !conversationId || decidingRef.current) {
       return;
     }
     decidingRef.current = true;
@@ -136,9 +143,9 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
     setApprovalError(null);
     try {
       if (action === "confirm") {
-        await confirmApproval(headers, conversationId, approvalId);
+        await confirmApproval(conversationId, approvalId);
       } else {
-        await rejectApproval(headers, conversationId, approvalId);
+        await rejectApproval(conversationId, approvalId);
       }
       await queryClient.invalidateQueries({ queryKey: ["transcript", conversationId] });
       await queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
@@ -177,7 +184,15 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
       ? "Conversation"
       : "New conversation";
 
-  if (actorsQuery.isError && isNotFound(actorsQuery.error)) {
+  if (sessionQuery.isLoading || (sessionQuery.isError && sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401)) {
+    return (
+      <main className="flex h-dvh items-center justify-center px-6">
+        <p className="text-sm text-muted">Loading…</p>
+      </main>
+    );
+  }
+
+  if (!signedIn) {
     return (
       <main className="flex h-dvh items-center justify-center px-6">
         <h1 className="text-xl font-semibold text-text">You don&apos;t have access to this page.</h1>
@@ -199,7 +214,7 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
           showList ? "flex flex-1 flex-col" : "hidden"
         }`}
       >
-        {listQuery.isLoading || actorsQuery.isLoading ? (
+        {listQuery.isLoading || sessionQuery.isLoading ? (
           <ListSkeleton />
         ) : listQuery.isError ? (
           <div className="p-3">
@@ -210,7 +225,7 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
             conversations={listQuery.data?.items ?? []}
             selectedId={conversationId}
             actors={actors}
-            actorId={actor?.customer_id ?? null}
+            actorId={session?.key ?? null}
             onActorChange={selectActor}
             showActorSwitch={showActorSwitch}
           />
@@ -269,7 +284,7 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
         </div>
         <Composer
           sending={sendMutation.isPending || createMutation.isPending}
-          disabled={headers === null || (conversationId !== undefined && threadFailed)}
+          disabled={!signedIn || (conversationId !== undefined && threadFailed)}
           notice={
             conversationQuery.data?.status === "resolved"
               ? "This conversation is resolved. Sending a message starts a new one."
@@ -284,6 +299,3 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
   );
 }
 
-function isNotFound(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404;
-}

@@ -310,12 +310,10 @@ def test_disabled_chat_does_not_construct_the_runtime_client(
 
     monkeypatch.setattr("assistflow_api.agents.build_data_plane_client", forbid)
     app = create_app(load_settings({}), engine=support_engine)
-    headers = {
-        "X-Tenant-Id": str(HARBOR),
-        "X-Customer-Id": str(HARBOR_CUSTOMER),
-        "X-Correlation-Id": "corr-runtime-off",
-    }
+    from tokens import customer_headers
+
     with TestClient(app) as client:
+        headers = customer_headers(client, HARBOR, HARBOR_CUSTOMER, "corr-runtime-off")
         created = client.post("/conversations", headers=headers, json={"idempotency_key": "rt-off"})
         conversation_id = created.json()["id"]
         posted = client.post(
