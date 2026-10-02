@@ -30,11 +30,21 @@ FALLBACK_MESSAGE = (
 
 _ORDER_HINTS = ("order", "delivery", "shipment", "tracking", "where is")
 _ORDER_NUMBER = re.compile(r"\bORD-\d+\b", re.IGNORECASE)
+_ESCALATION_PHRASES = (
+    "speak to a person",
+    "talk to a person",
+    "talk to a human",
+    "human agent",
+    "real person",
+    "escalate this",
+)
 
 
 def select_script(customer_message: str, context: ScriptContext | None = None) -> ScriptedPlan:
     """Pick a plan from the customer text. Sensitive plans only propose a change."""
     lowered = customer_message.lower()
+    if _is_escalation(lowered):
+        return escalation_plan(customer_message)
     if _is_address_change(lowered):
         return address_change_plan(customer_message, context)
     if _is_refund_request(lowered):
@@ -148,6 +158,29 @@ def refund_plan(customer_message: str, context: ScriptContext | None = None) -> 
     )
 
 
+def escalation_plan(customer_message: str) -> ScriptedPlan:
+    """Ask a person to join. The application still checks the conversation."""
+    reason = customer_message.strip()[:500]
+    return ScriptedPlan(
+        assistant_message=(
+            "I can ask a person to join this conversation. "
+            "I have not changed an order, a delivery, a return, or a refund."
+        ),
+        steps=[
+            ScriptedStep(kind=StepKind.MODEL, summary="human escalation"),
+            ScriptedStep(
+                kind=StepKind.TOOL_PROPOSAL,
+                summary="proposed request_human_escalation",
+                tool_name="request_human_escalation",
+                arguments={
+                    "reason": reason,
+                    "idempotency_key": f"escalate:{uuid4()}",
+                },
+            ),
+        ],
+    )
+
+
 def policy_plan(customer_message: str) -> ScriptedPlan:
     """Ask for published help articles. The application answers from those chunks."""
     query = customer_message.strip()[:400]
@@ -211,6 +244,12 @@ def follow_up_calls(
 
 def reply_from_tools(outcomes: list[dict[str, Any]]) -> str:
     """Answer from tool bodies only. Missing facts are not filled in."""
+    escalation = _succeeded(outcomes, "request_human_escalation")
+    if isinstance(escalation, dict):
+        return (
+            "A person will join this conversation. "
+            "I have not changed an order, a delivery, a return, or a refund."
+        )
     order = _succeeded(outcomes, "get_order")
     shipment = _succeeded(outcomes, "get_shipment")
     profile = _succeeded(outcomes, "get_customer_profile")
@@ -244,6 +283,10 @@ def reply_from_tools(outcomes: list[dict[str, Any]]) -> str:
     if any(item.get("status") == "blocked" for item in outcomes):
         return "I cannot complete that lookup. Please narrow the request, or wait for a person."
     return "I could not complete that lookup. Please try again, or wait for a person."
+
+
+def _is_escalation(text: str) -> bool:
+    return any(phrase in text for phrase in _ESCALATION_PHRASES)
 
 
 def _is_address_change(text: str) -> bool:

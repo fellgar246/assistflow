@@ -43,3 +43,6 @@ jobs:
       # Hosted agent packaging and smoke stay operator commands.
       - name: Test
         run: make test
+
+      - name: Evaluate
+        run: make eval

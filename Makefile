@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore smoke-gateway sync-knowledge
+.PHONY: lint typecheck test eval up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore smoke-gateway sync-knowledge
 
 PYTHON_PATHS := src tests \
 	../../services/conversations/src \
@@ -59,6 +59,10 @@ test-api:
 
 test-web:
 	npm --prefix apps/web test
+
+# Local golden scenarios. This target does not call a hosted model or hosted evaluations.
+eval:
+	$(UV) run --directory apps/api python -m assistflow_api.evaluate
 
 # Operator commands. Pull-request checks do not run these targets.
 deploy-agentcore:

@@ -37,6 +37,9 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Generated evaluation reports
+test-results/evaluations/
+
 # OS and editors
 .DS_Store
 .idea/

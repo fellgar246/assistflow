@@ -52,6 +52,10 @@ Values are redacted before they are written. A hosted memory client is construct
 
 Every response returns `X-Correlation-Id`. That id is stored with the agent trace, the tool execution, and the audit event. Hop logs name the HTTP request, the conversation, the turn, the model call, retrieval, the gateway, the tool, and the business command. A hosted runtime id is stored on the same trace row. `GET /metrics` exposes the process counters. CloudWatch receives them only when AWS and `METRICS_ENABLED` are both on. The log groups and the dashboard stay uncreated until `enable_observability` is true. See [how to diagnose a failed tool](../operations/diagnose-a-failed-tool.md).
 
+## Evaluation
+
+`make eval` runs the golden scenarios in `agent/evaluations` against the mock assistant and the local gateway. The command writes a JSON report and a Markdown summary. Both include the same metric names and the prompt version. It does not call a hosted model. A forbidden tool, a cross-tenant read, a skipped approval, or a step-cap breach exits non-zero. Qualitative scores stay "not run" unless a judge is enabled, and that judge does not decide the exit code. `HOSTED_EVALUATIONS=false` leaves the hosted evaluation client unconstructed. Token cost comes from `agent/evaluations/prices.json`; a missing price is null. Sampling markers on resolved conversations can be listed separately and are not required for the golden file.
+
 ## Limits
 
 Execution limits live in configuration, not in prompts. Exceeding a limit stops the turn. It does not retry without a bound. The local profile still enforces step, tool, and retrieval caps so the same guards are tested without a cloud account.

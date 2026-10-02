@@ -186,13 +186,17 @@ Responses include `X-Correlation-Id`. The same id is on the trace, the tool exec
 make lint
 make typecheck
 make test
+make eval
 ```
+
+`make eval` runs the golden scenarios in `agent/evaluations/scenarios.json` with the mock assistant. It writes `test-results/evaluations/report.json` and a short Markdown summary. The report records the prompt version, latency, token counts, and a cost when `agent/evaluations/prices.json` has a price for that model id. A missing price is null. The command exits non-zero when a forbidden tool is called, a cross-tenant read succeeds, an approval is skipped or applied early, or the step cap is exceeded. Qualitative scores are `not run` unless `EVAL_JUDGE_ENABLED=true`. `HOSTED_EVALUATIONS=false` does not construct a hosted evaluation client. `python -m assistflow_api.evaluate --list-samples` from `apps/api` lists sampling markers already stored for resolved conversations. Those markers are not part of the golden file.
 
 | Target | What it runs |
 |---|---|
 | `lint` | Ruff, ESLint, and `terraform fmt -check` |
 | `typecheck` | mypy, TypeScript, and `terraform validate` |
 | `test` | pytest and Vitest |
+| `eval` | Local golden scenarios against the mock assistant |
 | `up` / `down` | PostgreSQL via Docker Compose |
 | `deploy-agentcore` | Operator-only hosted runtime package and apply |
 | `smoke-agentcore` | Operator-only hosted order-fact check; skips without credentials |
