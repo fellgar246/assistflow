@@ -24,6 +24,7 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.managed_rag_enabled is False
     assert settings.local_only_mode is False
     assert settings.async_workers_enabled is False
+    assert settings.metrics_enabled is False
     assert settings.eval_sample_rate == 0.05
     assert settings.event_bus_name == ""
     assert settings.event_queue_url == ""

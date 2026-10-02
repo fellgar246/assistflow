@@ -1,5 +1,6 @@
 """In-process tool gateway. It delegates to the read registry and does not use the network."""
 
+import time
 from typing import Any
 
 from assistflow_contracts.agent import ExecutedTool, ToolSchema
@@ -12,6 +13,7 @@ from assistflow_contracts.gateway import (
     is_allowlisted_tool,
     refuses_unsafe_arguments,
 )
+from assistflow_contracts.observe import record_hop
 
 from assistflow_tools.models import RiskLevel, ToolContext, ToolOutcome
 from assistflow_tools.registry import ToolRegistry
@@ -63,6 +65,19 @@ class LocalToolGateway:
         arguments: dict[str, Any],
         actor_context: GatewayActor | None,
     ) -> ExecutedTool:
+        started = time.perf_counter()
+        result = self._dispatch(name, arguments, actor_context)
+        _record("gateway", name, result, actor_context, started)
+        if result.latency_ms == 0:
+            return result.model_copy(update={"latency_ms": _elapsed_ms(started)})
+        return result
+
+    def _dispatch(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        actor_context: GatewayActor | None,
+    ) -> ExecutedTool:
         digest = arguments_hash(name, arguments)
         if actor_context is None:
             return _denied(name, digest, "missing_actor", "A tenant context is required.")
@@ -102,6 +117,7 @@ class LocalToolGateway:
         arguments: dict[str, Any],
         actor_context: GatewayActor,
     ) -> ExecutedTool:
+        started = time.perf_counter()
         outcome = self._registry.execute(
             name,
             arguments,
@@ -116,7 +132,34 @@ class LocalToolGateway:
             max_executions=self._max_executions,
         )
         self._used += 1
-        return _executed(outcome)
+        executed = _executed(outcome).model_copy(update={"latency_ms": _elapsed_ms(started)})
+        _record("tool", name, executed, actor_context, started)
+        return executed
+
+
+def _record(
+    hop: str,
+    name: str,
+    result: ExecutedTool,
+    actor: GatewayActor | None,
+    started: float,
+) -> None:
+    if actor is None:
+        return
+    record_hop(
+        hop,
+        correlation_id=actor.correlation_id,
+        latency_ms=_elapsed_ms(started),
+        tool_name=name,
+        error_code=result.error_code,
+        status=result.status,
+        tenant_id=str(actor.tenant_id),
+        conversation_id=str(actor.conversation_id),
+    )
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.perf_counter() - started) * 1000))
 
 
 def _executed(outcome: ToolOutcome) -> ExecutedTool:

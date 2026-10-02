@@ -15,6 +15,7 @@ from assistflow_contracts.conversation import (
     MessageAuthor,
     MessageRole,
 )
+from assistflow_contracts.observe import current_metrics
 from assistflow_customers.hashing import canonical_hash
 from assistflow_customers.repository import (
     CustomerRepository,
@@ -97,6 +98,7 @@ def open_conversation(
         updated_at=created_at,
     )
     ConversationRepository(session).insert(record)
+    current_metrics().increment("conversation_count", tenant_id=str(tenant_id))
     _audit(
         session,
         tenant_id,
@@ -316,6 +318,8 @@ def record_tool_execution(
             "arguments_hash": record.arguments_hash,
             "result_summary": record.result_summary,
             "correlation_id": record.correlation_id,
+            "error_code": record.error_code,
+            "latency_ms": record.latency_ms,
         },
     )
 

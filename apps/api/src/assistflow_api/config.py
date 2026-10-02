@@ -96,6 +96,7 @@ class Settings(BaseModel):
     managed_rag_enabled: bool
     local_only_mode: bool
     async_workers_enabled: bool = False
+    metrics_enabled: bool = False
     eval_sample_rate: float = 0.05
     event_bus_name: str = ""
     event_queue_url: str = ""
@@ -175,6 +176,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     ai_enabled = _optional_bool(values, "AI_ENABLED", defaults.ai_enabled)
     guardrails_enabled = _optional_bool(values, "GUARDRAILS_ENABLED", False)
     async_workers_enabled = _optional_bool(values, "ASYNC_WORKERS_ENABLED", False)
+    metrics_enabled = _optional_bool(values, "METRICS_ENABLED", False)
 
     if local_only:
         aws_enabled = False
@@ -213,6 +215,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         managed_rag_enabled=managed_rag_enabled,
         local_only_mode=local_only,
         async_workers_enabled=async_workers_enabled,
+        metrics_enabled=metrics_enabled,
         eval_sample_rate=_sample_rate(values),
         event_bus_name=values.get("EVENT_BUS_NAME", "").strip(),
         event_queue_url=values.get("EVENT_QUEUE_URL", "").strip(),

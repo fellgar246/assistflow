@@ -33,6 +33,7 @@ def require_customer(request: Request) -> Actor:
     if verified.role is not Role.CUSTOMER or verified.customer_id is None:
         _deny(request, "forbidden")
         raise SupportError("forbidden", "That action is not available.", 403)
+    structlog.contextvars.bind_contextvars(tenant_id=str(verified.tenant_id))
     return Actor(
         tenant_id=verified.tenant_id,
         customer_id=verified.customer_id,
@@ -48,6 +49,7 @@ def require_staff(request: Request) -> StaffActor:
     if verified.role is not Role.SUPPORT_AGENT or verified.agent_id is None:
         _deny(request, "forbidden")
         raise SupportError("forbidden", "That action is not available.", 403)
+    structlog.contextvars.bind_contextvars(tenant_id=str(verified.tenant_id))
     return StaffActor(
         tenant_id=verified.tenant_id,
         agent_id=verified.agent_id,
@@ -75,6 +77,9 @@ def correlation_id(
         value = x_correlation_id.strip()
     else:
         value = str(uuid4())
+    existing = getattr(request.state, "correlation_id", None)
+    if isinstance(existing, str) and existing.strip() != "":
+        return existing
     request.state.correlation_id = value
     return value
 

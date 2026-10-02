@@ -4,9 +4,11 @@ When the assistant is enabled, a customer message also stores a reply and a trac
 The hosted runtime client is constructed only when that flag is on.
 """
 
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
+import structlog
+from assistflow_contracts.agent import ModelAdapter
 from assistflow_contracts.approval import ApprovalDecision, ApprovalView
 from assistflow_contracts.conversation import (
     Citation,
@@ -20,6 +22,7 @@ from assistflow_contracts.conversation import (
     MessageRole,
     OpenConversation,
 )
+from assistflow_contracts.observe import record_hop
 from assistflow_contracts.support import Problem
 from assistflow_conversations.approvals import ApprovalFailure, expire_elapsed, reject_approval
 from assistflow_conversations.commands import (
@@ -33,7 +36,6 @@ from assistflow_conversations.repository import (
     MessageRepository,
 )
 from assistflow_customers.errors import SupportError
-from assistflow_runtime.redaction import redact_text
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -44,6 +46,7 @@ from assistflow_api.approvals import confirm_stored_approval, present_approval
 from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query, require_customer
 from assistflow_api.turns import complete_agent_turn, tool_activity_for
+from assistflow_runtime.redaction import redact_text
 
 router = APIRouter()
 
@@ -60,6 +63,14 @@ DevActor = Annotated[Actor, Depends(require_customer)]
 Db = Annotated[Session, Depends(get_session)]
 Page = Annotated[PageQuery, Depends(page_query)]
 Correlation = Annotated[str, Depends(correlation_id)]
+
+
+def _model_adapter(request: Request) -> ModelAdapter | None:
+    """Use a test adapter when one is installed. Production leaves this empty."""
+    override = getattr(request.app.state, "model_adapter", None)
+    if getattr(override, "complete", None) is None:
+        return None
+    return cast(ModelAdapter, override)
 
 
 def _stamp(response: Response, correlation: str) -> None:
@@ -184,6 +195,14 @@ def post_customer_message(
     settings = request.app.state.settings
     assistant_enabled = isinstance(settings, Settings) and settings.ai_enabled
     content = redact_text(body.content)
+    structlog.contextvars.bind_contextvars(conversation_id=str(conversation_id))
+    record_hop(
+        "conversation",
+        correlation_id=correlation,
+        tenant_id=str(actor.tenant_id),
+        conversation_id=str(conversation_id),
+        status="open",
+    )
     result = append_customer_message(
         session,
         actor.tenant_id,
@@ -199,9 +218,10 @@ def post_customer_message(
             settings,
             quota=getattr(request.app.state, "session_quota", None),
             transport=getattr(request.app.state, "runtime_transport", None),
+            adapter=_model_adapter(request),
         )
         if runner is not None:
-            complete_agent_turn(
+            turn = complete_agent_turn(
                 session,
                 actor.tenant_id,
                 actor.customer_id,
@@ -216,6 +236,16 @@ def post_customer_message(
                 score_floor=settings.retrieval_score_floor,
                 settings=settings,
             )
+            failed = next(
+                (
+                    item
+                    for item in turn.executed_tools
+                    if item.status == "failed" and item.error_code
+                ),
+                None,
+            )
+            if failed is not None and failed.error_code is not None:
+                request.state.failure_code = failed.error_code
     if result.replayed:
         response.status_code = 200
     response.headers["X-Conversation-Id"] = str(result.conversation_id)

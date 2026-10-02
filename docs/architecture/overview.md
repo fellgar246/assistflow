@@ -48,6 +48,10 @@ Long-term memory is off unless `LONG_TERM_MEMORY_ENABLED=true`. It stores only `
 
 Values are redacted before they are written. A hosted memory client is constructed only when `AGENTCORE_ENABLED=true` and the matching memory flag is on. Otherwise the local tables are used, or nothing is constructed.
 
+## Operations
+
+Every response returns `X-Correlation-Id`. That id is stored with the agent trace, the tool execution, and the audit event. Hop logs name the HTTP request, the conversation, the turn, the model call, retrieval, the gateway, the tool, and the business command. A hosted runtime id is stored on the same trace row. `GET /metrics` exposes the process counters. CloudWatch receives them only when AWS and `METRICS_ENABLED` are both on. The log groups and the dashboard stay uncreated until `enable_observability` is true. See [how to diagnose a failed tool](../operations/diagnose-a-failed-tool.md).
+
 ## Limits
 
 Execution limits live in configuration, not in prompts. Exceeding a limit stops the turn. It does not retry without a bound. The local profile still enforces step, tool, and retrieval caps so the same guards are tested without a cloud account.

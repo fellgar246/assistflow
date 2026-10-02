@@ -144,6 +144,7 @@ class ExecutedTool(BaseModel):
     body: dict[str, Any] | None = None
     risk_level: str
     arguments_hash: str
+    latency_ms: int = Field(default=0, ge=0)
 
 
 class AgentResult(BaseModel):

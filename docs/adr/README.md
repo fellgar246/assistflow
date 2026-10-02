@@ -19,3 +19,4 @@
 | [0015](0015-human-and-assistant-share-a-conversation.md) | A person and the assistant share one conversation |
 | [0016](0016-side-effects-run-after-the-response.md) | Side effects run after the response |
 | [0017](0017-tenant-comes-from-the-verified-token.md) | The tenant comes from the verified token |
+| [0018](0018-one-correlation-id-diagnoses-a-failed-tool.md) | One correlation id diagnoses a failed tool |

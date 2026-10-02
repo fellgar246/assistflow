@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from assistflow_contracts.approval import ApprovalStatus, ProposedChange
 from assistflow_contracts.conversation import ConversationStatus
 from assistflow_contracts.gateway import arguments_hash
+from assistflow_contracts.observe import current_metrics
 from assistflow_customers.errors import SupportError
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
@@ -126,6 +127,12 @@ def store_proposal(
         idempotency_key=key,
     )
     repository.insert(approval)
+    current_metrics().increment(
+        "approval_requested_count",
+        tool=tool_name,
+        status="pending_approval",
+        tenant_id=str(tenant_id),
+    )
     _audit(
         session,
         tenant_id,
@@ -216,6 +223,12 @@ def reject_approval(
             "This change is no longer waiting for confirmation.",
         )
     updated = ApprovalRepository(session).save_status(record, status=ApprovalStatus.REJECTED)
+    current_metrics().increment(
+        "approval_rejected_count",
+        tool=record.action_type,
+        status="rejected",
+        tenant_id=str(tenant_id),
+    )
     _audit(
         session,
         tenant_id,
@@ -301,6 +314,12 @@ def consume_approval(
         status=ApprovalStatus.CONSUMED,
         approved_at=current,
         approved_by=actor.actor_id,
+    )
+    current_metrics().increment(
+        "approval_accepted_count",
+        tool=record.action_type,
+        status="accepted",
+        tenant_id=str(tenant_id),
     )
     _audit(
         session,

@@ -3,6 +3,7 @@
 Write tools are not retried. Tier 2 mutation is reached only through apply_approved.
 """
 
+import contextvars
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -288,6 +289,7 @@ def _invoke(
     timeout_seconds: float,
 ) -> dict[str, Any]:
     outcome: dict[str, object] = {}
+    ctx = contextvars.copy_context()
 
     def target() -> None:
         try:
@@ -297,7 +299,7 @@ def _invoke(
         finally:
             outcome["done"] = True
 
-    thread = threading.Thread(target=target, daemon=True)
+    thread = threading.Thread(target=ctx.run, args=(target,), daemon=True)
     thread.start()
     thread.join(timeout_seconds)
     if "done" not in outcome:

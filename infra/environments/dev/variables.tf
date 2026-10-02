@@ -70,6 +70,12 @@ variable "enable_cognito" {
   default     = false
 }
 
+variable "enable_observability" {
+  description = "Log groups and the operations dashboard. Disabled by default."
+  type        = bool
+  default     = false
+}
+
 variable "enable_async_workers" {
   description = "Queue, event bus, and side-effect consumer. Disabled by default."
   type        = bool

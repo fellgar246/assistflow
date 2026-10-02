@@ -58,6 +58,8 @@ def test_support_migration_applies_and_downgrades(
     trace_columns = {column["name"] for column in inspect(engine).get_columns("agent_traces")}
     assert "runtime_invocation_id" in trace_columns
     assert "duration_ms" in trace_columns
+    tool_columns = {column["name"] for column in inspect(engine).get_columns("tool_executions")}
+    assert "latency_ms" in tool_columns
 
     command.downgrade(config, "base")
     remaining = set(inspect(engine).get_table_names())

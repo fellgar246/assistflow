@@ -155,6 +155,7 @@ class ToolExecutionRow(Base):
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     result_summary: Mapped[str] = mapped_column(String(240))
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class ApprovalRequestRow(Base):

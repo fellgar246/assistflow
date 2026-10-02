@@ -228,6 +228,9 @@ def test_redaction_covers_tokens_keys_and_cards() -> None:
     assert dashed not in cleaned
     assert "ORD-10482" in cleaned
     assert cleaned.count(REDACTED) == 5
+    assert redact_text("11111111-1111-4111-8111-111111111111") == (
+        "11111111-1111-4111-8111-111111111111"
+    )
 
 
 def test_log_processor_removes_secret_shaped_strings() -> None:

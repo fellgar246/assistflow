@@ -90,6 +90,14 @@ module "cognito" {
   tags    = local.required_tags
 }
 
+module "observability" {
+  source = "../../modules/observability"
+
+  enabled    = var.enable_observability
+  aws_region = var.aws_region
+  tags       = local.required_tags
+}
+
 module "async_workers" {
   source = "../../modules/async_workers"
 

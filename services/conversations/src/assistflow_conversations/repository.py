@@ -534,6 +534,7 @@ class ToolExecutionRecord:
     finished_at: datetime | None
     result_summary: str
     error_code: str | None = None
+    latency_ms: int = 0
 
 
 def _tool_execution(row: ToolExecutionRow) -> ToolExecutionRecord:
@@ -552,6 +553,7 @@ def _tool_execution(row: ToolExecutionRow) -> ToolExecutionRecord:
         finished_at=row.finished_at,
         result_summary=row.result_summary,
         error_code=row.error_code,
+        latency_ms=row.latency_ms,
     )
 
 
@@ -580,6 +582,7 @@ class ToolExecutionRepository:
                 finished_at=record.finished_at,
                 result_summary=record.result_summary,
                 error_code=record.error_code,
+                latency_ms=record.latency_ms,
             )
         )
 

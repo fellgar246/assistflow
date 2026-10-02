@@ -13,7 +13,13 @@ output "feature_flags" {
     enable_schedules        = var.enable_schedules
     enable_async_workers    = var.enable_async_workers
     enable_cognito          = var.enable_cognito
+    enable_observability    = var.enable_observability
   }
+}
+
+output "operations_dashboard_name" {
+  description = "Operations dashboard name. Empty while enable_observability is false."
+  value       = module.observability.dashboard_name
 }
 
 output "cognito_user_pool_id" {

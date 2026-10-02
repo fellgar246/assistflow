@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -23,6 +24,7 @@ from assistflow_contracts.conversation import (
 )
 from assistflow_contracts.gateway import GatewayActor
 from assistflow_contracts.memory import SessionFacts
+from assistflow_contracts.observe import record_hop
 from assistflow_conversations.approvals import store_proposal
 from assistflow_conversations.commands import (
     ActorContext,
@@ -38,6 +40,13 @@ from assistflow_conversations.repository import (
     ToolExecutionRecord,
     ToolExecutionRepository,
 )
+from sqlalchemy.orm import Session
+
+from assistflow_api.agents import TurnRunner
+from assistflow_api.config import Settings
+from assistflow_api.logging import payloads_suppressed
+from assistflow_api.metrics import record_turn
+from assistflow_api.retrieval import build_knowledge_retriever
 from assistflow_knowledge.embeddings import DeterministicEmbedding
 from assistflow_knowledge.retriever import KnowledgeRetriever, LocalKnowledgeRetriever
 from assistflow_memory import (
@@ -61,11 +70,6 @@ from assistflow_tools import (
     service_handlers,
 )
 from assistflow_tools.writes import approved_write_handlers
-from sqlalchemy.orm import Session
-
-from assistflow_api.agents import TurnRunner
-from assistflow_api.config import Settings
-from assistflow_api.retrieval import build_knowledge_retriever
 
 logger = structlog.get_logger("assistflow.turn")
 
@@ -89,6 +93,7 @@ def complete_agent_turn(
     memory: MemoryPorts | None = None,
 ) -> AgentResult:
     """Ask the runner for a reply, run tier-0 tools, and persist the answer."""
+    started = time.perf_counter()
     history = _history(session, tenant_id, conversation_id, customer_message_id)
     ports = memory_ports_for(settings, session, memory)
     now = datetime.now(UTC)
@@ -146,13 +151,8 @@ def complete_agent_turn(
                     "trace": result.trace.model_copy(update={"stop_reason": StopReason.FAILED}),
                 }
             )
-    logger.info(
-        "turn_persisted",
-        assistant_message=result.assistant_message,
-        tool_summaries=[item.summary for item in result.executed_tools],
-        trace_summaries=[step.input_summary for step in result.trace.steps],
-    )
     result = _redacted_result(result)
+    _log_turn(result)
     executions, approval_ids = _store_handled(
         session,
         tenant_id,
@@ -218,6 +218,17 @@ def complete_agent_turn(
         ),
         actor,
     )
+    latency_ms = _elapsed_ms(started)
+    record_hop(
+        "agent",
+        correlation_id=actor.correlation_id,
+        latency_ms=latency_ms,
+        tenant_id=str(tenant_id),
+        conversation_id=str(conversation_id),
+        status=result.stop_reason.value,
+        runtime_trace_id=result.trace.runtime_invocation_id,
+    )
+    record_turn(result, tenant_id, latency_ms)
     return result
 
 
@@ -373,6 +384,7 @@ def _store_outcome(
         finished_at=now,
         result_summary=outcome.summary[:240],
         error_code=outcome.error_code,
+        latency_ms=outcome.latency_ms,
     )
     record_tool_execution(session, record, actor)
     append_message(
@@ -386,6 +398,25 @@ def _store_outcome(
         actor,
     )
     return record
+
+
+def _log_turn(result: AgentResult) -> None:
+    """Log names, codes, and timings. Raw model documents stay out of the line."""
+    fields: dict[str, object] = {
+        "stop_reason": result.stop_reason.value,
+        "tool_names": [item.name for item in result.executed_tools],
+        "error_codes": [item.error_code for item in result.executed_tools if item.error_code],
+        "latency_ms": [item.latency_ms for item in result.executed_tools],
+        "input_tokens": result.usage.input_tokens,
+        "output_tokens": result.usage.output_tokens,
+    }
+    if not payloads_suppressed():
+        fields["assistant_message"] = result.assistant_message
+    logger.info("turn_persisted", **fields)
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.perf_counter() - started) * 1000))
 
 
 def _redacted_result(result: AgentResult) -> AgentResult:

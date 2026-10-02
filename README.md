@@ -176,6 +176,10 @@ A hosted memory client is built only when `AGENTCORE_ENABLED=true` and the match
 
 A fixed set of 10 address follow-ups is compared in [the session-memory note](docs/evaluations/session-memory-follow-ups.md).
 
+## Operations
+
+Responses include `X-Correlation-Id`. The same id is on the trace, the tool execution, and the audit event. `GET /metrics` lists the local counters. Set `METRICS_ENABLED=true` together with `AWS_ENABLED=true` to publish them. The CloudWatch log groups and dashboard stay off until `enable_observability` is true. [Diagnose a failed tool](docs/operations/diagnose-a-failed-tool.md) walks one failed lookup from that id.
+
 ## Quality gates
 
 ```bash

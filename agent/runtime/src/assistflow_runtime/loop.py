@@ -38,6 +38,7 @@ from assistflow_contracts.memory import (
     MemoryPreference,
     SessionFacts,
 )
+from assistflow_contracts.observe import record_hop
 
 from assistflow_runtime.gateway import ToolGateway
 from assistflow_runtime.guardrails import (
@@ -199,6 +200,17 @@ class AgentLoop:
             input_tokens += response.usage.input_tokens
             output_tokens += response.usage.output_tokens
             latency = response.latency_ms or _elapsed_ms(started)
+            record_hop(
+                "model",
+                correlation_id=turn_context.correlation_id,
+                latency_ms=latency,
+                tenant_id=str(turn_context.tenant_id),
+                conversation_id=str(turn_context.conversation_id),
+                status="failed" if isinstance(response, ModelProviderError) else "succeeded",
+                error_code=(
+                    response.code.value if isinstance(response, ModelProviderError) else None
+                ),
+            )
             if isinstance(response, ModelProviderError):
                 steps.append(
                     _step(len(steps), StepKind.MODEL, latency, f"provider {response.code.value}")
@@ -340,7 +352,14 @@ class AgentLoop:
             proposed.append(
                 ProposedToolCall(name=request.name, arguments=_plain_arguments(arguments))
             )
-            steps.append(_step(len(steps), StepKind.TOOL_PROPOSAL, 0, f"proposed {request.name}"))
+            steps.append(
+                _step(
+                    len(steps),
+                    StepKind.TOOL_PROPOSAL,
+                    outcome.latency_ms,
+                    f"proposed {request.name}",
+                )
+            )
             messages.append(_tool_message(request.id, outcome))
         return True, retrievals
 
@@ -486,10 +505,9 @@ class AgentLoop:
         ]
         safe_executed = [_redacted_tool(item) for item in executed]
         _LOGGER.info(
-            "turn_finished stop_reason=%s assistant_message=%s tool_summaries=%s",
+            "turn_finished stop_reason=%s tools=%s",
             stop_reason.value,
-            assistant_message,
-            " | ".join(item.summary for item in safe_executed),
+            ",".join(item.name for item in safe_executed),
         )
         return AgentResult(
             assistant_message=assistant_message,

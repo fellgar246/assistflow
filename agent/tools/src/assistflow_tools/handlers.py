@@ -1,9 +1,11 @@
 """Thin adapters over support services. These functions do not issue SQL."""
 
+import time
 from collections.abc import Callable
 from datetime import date
 from uuid import UUID
 
+from assistflow_contracts.observe import record_hop
 from assistflow_customers.repository import CustomerRepository
 from assistflow_orders.repository import OrderRecord, OrderRepository
 from assistflow_shipping.repository import ShipmentRepository
@@ -16,6 +18,7 @@ from assistflow_knowledge.retriever import (
     KnowledgeRetriever,
     LocalKnowledgeRetriever,
 )
+from assistflow_tools.faults import take_fault
 from assistflow_tools.models import (
     GetCustomerProfileArgs,
     GetOrderArgs,
@@ -63,13 +66,22 @@ def service_handlers(
 
 def _order_handler(session: Session, today: date) -> Handler:
     def handle(context: ToolContext, arguments: object) -> dict[str, object]:
+        started = time.perf_counter()
         parsed = (
             arguments
             if isinstance(arguments, GetOrderArgs)
             else GetOrderArgs.model_validate(arguments)
         )
-        order = _visible_order(session, context, parsed.order_id)
+        if take_fault("get_order"):
+            _command(context, "get_order", started, "tool_failed")
+            raise ToolError("tool_failed", "The lookup failed.")
+        try:
+            order = _visible_order(session, context, parsed.order_id)
+        except ToolError as exc:
+            _command(context, "get_order", started, exc.code)
+            raise
         shipment = ShipmentRepository(session).get_by_order(context.tenant_id, order.id)
+        _command(context, "get_order", started, None)
         return project_order(order, shipment, today)
 
     return handle
@@ -131,7 +143,17 @@ def _policy_handler(retriever: KnowledgeRetriever) -> Handler:
             else SearchSupportPolicyArgs.model_validate(arguments)
         )
         limit = min(DEFAULT_CHUNK_CAP, retriever.chunk_cap)
+        started = time.perf_counter()
         found = retriever.retrieve(context.tenant_id, parsed.query, limit)
+        record_hop(
+            "retrieval",
+            correlation_id=context.correlation_id,
+            latency_ms=_elapsed_ms(started),
+            tool_name="search_support_policy",
+            status="succeeded",
+            tenant_id=str(context.tenant_id),
+            conversation_id=str(context.conversation_id),
+        )
         return {
             "chunks": [
                 {
@@ -146,6 +168,23 @@ def _policy_handler(retriever: KnowledgeRetriever) -> Handler:
         }
 
     return handle
+
+
+def _command(context: ToolContext, name: str, started: float, error_code: str | None) -> None:
+    record_hop(
+        "command",
+        correlation_id=context.correlation_id,
+        latency_ms=_elapsed_ms(started),
+        tool_name=name,
+        error_code=error_code,
+        status="failed" if error_code else "succeeded",
+        tenant_id=str(context.tenant_id),
+        conversation_id=str(context.conversation_id),
+    )
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.perf_counter() - started) * 1000))
 
 
 def _visible_order(session: Session, context: ToolContext, order_id: str) -> OrderRecord:

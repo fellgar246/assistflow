@@ -6,6 +6,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from assistflow_contracts.conversation import ConversationStatus
+from assistflow_contracts.observe import current_metrics
 from assistflow_contracts.support import Ticket, TicketCategory, TicketPriority, TicketStatus
 from assistflow_conversations.audit import audit_payload
 from assistflow_conversations.outbox import (
@@ -284,6 +285,7 @@ def request_human_escalation(
         created_at=created_at,
     )
     TicketRepository(session).insert(ticket)
+    current_metrics().record_escalation(str(tenant_id))
     _audit(
         session,
         tenant_id,
