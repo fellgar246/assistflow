@@ -8,12 +8,20 @@ export default function HomePage() {
         <p className="mt-3 text-base leading-6 text-zinc-600">
           Customer support, running on this machine.
         </p>
-        <Link
-          href="/chat"
-          className="mt-6 inline-flex min-h-11 items-center text-sm font-medium text-indigo-700 underline"
-        >
-          Open chat
-        </Link>
+        <div className="mt-6 flex flex-col gap-2">
+          <Link
+            href="/chat"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-indigo-700 underline"
+          >
+            Open chat
+          </Link>
+          <Link
+            href="/agent/inbox"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-indigo-700 underline"
+          >
+            Open support inbox
+          </Link>
+        </div>
       </section>
     </main>
   );

@@ -1,5 +1,6 @@
 """Open a conversation, append messages, and move status. Each write audits in the same session."""
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
@@ -11,6 +12,7 @@ from assistflow_contracts.conversation import (
     ConversationChannel,
     ConversationStatus,
     Message,
+    MessageAuthor,
     MessageRole,
 )
 from assistflow_customers.hashing import canonical_hash
@@ -62,6 +64,7 @@ class ConversationWrite:
 class MessageWrite:
     message: Message
     replayed: bool
+    conversation_id: UUID
 
 
 def open_conversation(
@@ -140,11 +143,19 @@ def append_customer_message(
     state an order fact. Callers that run the in-process assistant pass
     acknowledge=False and store the assistant reply themselves.
     """
-    written = append_message(
+    target_id = _customer_target(
         session,
         tenant_id,
         customer_id,
         conversation_id,
+        idempotency_key,
+        actor,
+    )
+    written = append_message(
+        session,
+        tenant_id,
+        customer_id,
+        target_id,
         MessageRole.CUSTOMER,
         content,
         idempotency_key,
@@ -153,12 +164,12 @@ def append_customer_message(
     if written.replayed or not acknowledge:
         return written
     messages = MessageRepository(session)
-    if not messages.has_role(tenant_id, conversation_id, MessageRole.ASSISTANT):
+    if not messages.has_role(tenant_id, written.conversation_id, MessageRole.ASSISTANT):
         append_message(
             session,
             tenant_id,
             customer_id,
-            conversation_id,
+            written.conversation_id,
             MessageRole.ASSISTANT,
             ACKNOWLEDGEMENT,
             f"acknowledgement:{idempotency_key}",
@@ -177,6 +188,8 @@ def append_message(
     idempotency_key: str,
     actor: ActorContext,
     citations: list[Citation] | None = None,
+    author_type: str | None = None,
+    author_name: str | None = None,
 ) -> MessageWrite:
     """Append one message in creation order. Used by replay tests for non-customer roles."""
     arguments_hash = canonical_hash(
@@ -195,8 +208,15 @@ def append_message(
         arguments_hash,
     )
     if stored is not None:
-        return MessageWrite(message=Message.model_validate(stored), replayed=True)
+        raw_id = stored.get("conversation_id")
+        stored_conversation = UUID(str(raw_id)) if isinstance(raw_id, str) else conversation_id
+        return MessageWrite(
+            message=Message.model_validate(stored),
+            replayed=True,
+            conversation_id=stored_conversation,
+        )
 
+    resolved_author = author_type or _default_author(role)
     ConversationRepository(session).require_for_customer(tenant_id, customer_id, conversation_id)
     created_at = datetime.now(UTC)
     record = MessageRecord(
@@ -206,6 +226,8 @@ def append_message(
         content=content,
         created_at=created_at,
         citations=tuple((item.title, item.version) for item in (citations or [])),
+        author_type=resolved_author,
+        author_name=author_name,
     )
     messages = MessageRepository(session)
     messages.insert(tenant_id, record)
@@ -222,19 +244,22 @@ def append_message(
             "conversation_id": str(conversation_id),
             "message_id": str(record.id),
             "role": role.value,
+            "author_type": resolved_author,
         },
     )
     message = _public_message(record)
+    stored_result = cast(dict[str, object], message.model_dump(mode="json"))
+    stored_result["conversation_id"] = str(conversation_id)
     idempotency.save(
         record_id=uuid4(),
         tenant_id=tenant_id,
         command_name=_APPEND,
         idempotency_key=idempotency_key,
         arguments_hash=arguments_hash,
-        result_json=cast(dict[str, object], message.model_dump(mode="json")),
+        result_json=stored_result,
         created_at=created_at,
     )
-    return MessageWrite(message=message, replayed=False)
+    return MessageWrite(message=message, replayed=False, conversation_id=conversation_id)
 
 
 def record_agent_trace(
@@ -380,4 +405,52 @@ def _public_message(record: MessageRecord) -> Message:
         content=record.content,
         created_at=record.created_at,
         citations=[Citation(title=title, version=version) for title, version in record.citations],
+        author_type=MessageAuthor(record.author_type),
+        author_name=record.author_name,
     )
+
+
+def _default_author(role: MessageRole) -> str:
+    if role is MessageRole.CUSTOMER:
+        return MessageAuthor.CUSTOMER.value
+    if role is MessageRole.SYSTEM:
+        return MessageAuthor.SYSTEM.value
+    if role is MessageRole.TOOL:
+        return MessageAuthor.SYSTEM.value
+    return MessageAuthor.MODEL.value
+
+
+def _reopen_key(idempotency_key: str) -> str:
+    digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+    return f"reopen:{digest}"
+
+
+def _customer_target(
+    session: Session,
+    tenant_id: UUID,
+    customer_id: UUID,
+    conversation_id: UUID,
+    idempotency_key: str,
+    actor: ActorContext,
+) -> UUID:
+    """A resolved thread stays closed. A new customer message opens a new one."""
+    current = ConversationRepository(session).require_for_customer(
+        tenant_id, customer_id, conversation_id
+    )
+    idempotency = IdempotencyRepository(session)
+    existing = idempotency.find(tenant_id, _APPEND, idempotency_key)
+    if existing is not None:
+        raw_id = existing.result_json.get("conversation_id")
+        if isinstance(raw_id, str):
+            return UUID(raw_id)
+        return conversation_id
+    if current.status is not ConversationStatus.RESOLVED:
+        return conversation_id
+    opened = open_conversation(
+        session,
+        tenant_id,
+        customer_id,
+        _reopen_key(idempotency_key),
+        actor,
+    )
+    return opened.conversation.id

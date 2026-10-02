@@ -23,6 +23,15 @@ class MessageRole(StrEnum):
     TOOL = "tool"
 
 
+class MessageAuthor(StrEnum):
+    """Who wrote a stored message. A person is never presented as the model."""
+
+    CUSTOMER = "customer"
+    MODEL = "model"
+    SUPPORT_AGENT = "support_agent"
+    SYSTEM = "system"
+
+
 class ConversationChannel(StrEnum):
     WEB = "web"
 
@@ -84,6 +93,8 @@ class Message(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     tool_activity: list[ToolActivity] = Field(default_factory=list)
     approvals: list[ApprovalView] = Field(default_factory=list)
+    author_type: MessageAuthor = MessageAuthor.MODEL
+    author_name: str | None = Field(default=None, max_length=80)
 
 
 class MessagePage(BaseModel):

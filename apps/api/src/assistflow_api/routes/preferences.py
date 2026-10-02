@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from assistflow_contracts.memory import MemoryPreferenceList
 from assistflow_contracts.support import Problem
 from assistflow_customers.errors import SupportError
+from assistflow_memory.ports import PreferenceMemory
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,6 @@ from assistflow_api.actor import Actor, require_actor
 from assistflow_api.config import Settings
 from assistflow_api.deps import correlation_id, get_session
 from assistflow_api.turns import memory_ports_for
-from assistflow_memory.ports import PreferenceMemory
 
 router = APIRouter()
 

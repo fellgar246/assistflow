@@ -5,14 +5,13 @@ def load_models() -> None:
     """Import every support model module. Import order is not significant."""
     import assistflow_conversations.models
     import assistflow_customers.models
+    import assistflow_knowledge.models
+    import assistflow_memory.models
     import assistflow_orders.models
     import assistflow_refunds.models
     import assistflow_returns.models
     import assistflow_shipping.models
     import assistflow_tickets.models
-
-    import assistflow_knowledge.models
-    import assistflow_memory.models
 
     _ = (
         assistflow_conversations.models,

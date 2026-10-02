@@ -7,7 +7,6 @@ from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
-
 from assistflow_runtime.redaction import redact_data
 
 

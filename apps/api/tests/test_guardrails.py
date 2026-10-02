@@ -37,17 +37,8 @@ from assistflow_conversations.repository import (
     MessageRepository,
     ToolExecutionRepository,
 )
-from assistflow_refunds.models import RefundRequestRow
-from assistflow_test_fixtures.agent_scripts import follow_up_calls, reply_from_tools, select_script
-from sqlalchemy import func, select
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-
-from assistflow_api.agents import InProcessAgentRunner
-from assistflow_api.config import load_settings, repo_root
-from assistflow_api.logging import configure_logging, redact_processor
-from assistflow_api.turns import complete_agent_turn
 from assistflow_knowledge.retriever import RetrievedChunk
+from assistflow_refunds.models import RefundRequestRow
 from assistflow_runtime.guardrails import (
     DENIED_TOPIC_MESSAGE,
     GUARDRAIL_UNAVAILABLE_MESSAGE,
@@ -62,7 +53,16 @@ from assistflow_runtime.loop import AgentLoop
 from assistflow_runtime.mock_adapter import MockModelAdapter
 from assistflow_runtime.prompts import PromptRegistry
 from assistflow_runtime.redaction import REDACTED, redact_text
+from assistflow_test_fixtures.agent_scripts import follow_up_calls, reply_from_tools, select_script
 from assistflow_tools import LocalToolGateway, build_registry, service_handlers
+from sqlalchemy import func, select
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from assistflow_api.agents import InProcessAgentRunner
+from assistflow_api.config import load_settings, repo_root
+from assistflow_api.logging import configure_logging, redact_processor
+from assistflow_api.turns import complete_agent_turn
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 HARBOR_CUSTOMER = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001")

@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 import structlog
 from assistflow_contracts import HealthStatus
+from assistflow_runtime.quota import SessionQuota
 from fastapi import FastAPI
 from sqlalchemy.engine import Engine
 
@@ -16,8 +17,8 @@ from assistflow_api.http import register_error_handlers
 from assistflow_api.logging import configure_logging
 from assistflow_api.routes.conversations import router as conversation_router
 from assistflow_api.routes.preferences import router as preference_router
+from assistflow_api.routes.staff import router as staff_router
 from assistflow_api.routes.support import router as support_router
-from assistflow_runtime.quota import SessionQuota
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -55,6 +56,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.include_router(support_router)
     app.include_router(conversation_router)
     app.include_router(preference_router)
+    app.include_router(staff_router)
 
     @app.get("/health", response_model=HealthStatus)
     def health() -> HealthStatus:

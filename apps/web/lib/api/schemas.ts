@@ -53,6 +53,7 @@ export const approvalSchema = z.object({
   requested_at: z.string(),
   expires_at: z.string(),
   approved_at: z.string().nullable().optional(),
+  approved_by: z.uuid().nullable().optional(),
 });
 
 export const toolActivitySchema = z.object({
@@ -76,6 +77,8 @@ export const messageSchema = z.object({
   citations: z.array(citationSchema).default([]),
   tool_activity: z.array(toolActivitySchema).default([]),
   approvals: z.array(approvalSchema).default([]),
+  author_type: z.enum(["customer", "model", "support_agent", "system"]).default("model"),
+  author_name: z.string().nullable().optional(),
 });
 
 export const messagePageSchema = z.object({
@@ -125,3 +128,96 @@ export type ProposedChange = z.infer<typeof proposedChangeSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type Conversation = z.infer<typeof conversationSchema>;
 export type LocalActor = z.infer<typeof localActorSchema>;
+
+export const staffActorSchema = z.object({
+  label: z.string(),
+  organization: z.string(),
+  tenant_id: z.uuid(),
+  agent_id: z.uuid(),
+});
+
+export const staffActorListSchema = z.object({
+  actors: z.array(staffActorSchema),
+});
+
+export const staffConversationSchema = z.object({
+  id: z.uuid(),
+  customer_id: z.uuid(),
+  customer_display_name: z.string(),
+  channel: z.literal("web"),
+  status: conversationStatusSchema,
+  assigned_to: z.uuid().nullable(),
+  assignee_name: z.string().nullable(),
+  ticket_id: z.uuid().nullable(),
+  ticket_priority: z.enum(["low", "normal", "high"]).nullable(),
+  pending_approval_count: z.number().int().nonnegative(),
+  preview: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const staffInboxSchema = z.object({
+  items: z.array(staffConversationSchema),
+  next_cursor: z.string().nullable(),
+  counts: z.object({
+    all: z.number().int().nonnegative(),
+    escalated: z.number().int().nonnegative(),
+    waiting_approval: z.number().int().nonnegative(),
+  }),
+});
+
+export const traceStepSchema = z.object({
+  step: z.number().int().positive(),
+  kind: z.string(),
+  tool_name: z.string().nullable().optional(),
+  status: z.string().nullable().optional(),
+  latency_ms: z.number().int().nonnegative(),
+  error_code: z.string().nullable().optional(),
+  detail: z.string(),
+  arguments_hash: z.string().nullable().optional(),
+});
+
+export const traceSummarySchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.uuid(),
+      stop_reason: z.string(),
+      created_at: z.string(),
+      steps: z.array(traceStepSchema),
+      step_count: z.number().int().nonnegative(),
+      step_limit: z.number().int().positive(),
+      tool_call_count: z.number().int().nonnegative(),
+      tool_call_limit: z.number().int().positive(),
+      total_latency_ms: z.number().int().nonnegative(),
+      stopped_by_limit: z.boolean(),
+    }),
+  ),
+});
+
+export const ticketDetailSchema = z.object({
+  id: z.uuid(),
+  customer_display_name: z.string(),
+  priority: z.enum(["low", "normal", "high"]),
+  category: z.string(),
+  status: z.enum(["open", "pending", "escalated", "resolved"]),
+  summary: z.string(),
+  conversation_id: z.uuid().nullable(),
+  assigned_to: z.uuid().nullable(),
+  assignee_name: z.string().nullable(),
+  created_at: z.string(),
+  notes: z.array(
+    z.object({
+      id: z.uuid(),
+      body: z.string(),
+      author_type: z.string(),
+      created_at: z.string(),
+    }),
+  ),
+});
+
+export type StaffActor = z.infer<typeof staffActorSchema>;
+export type StaffConversation = z.infer<typeof staffConversationSchema>;
+export type StaffInbox = z.infer<typeof staffInboxSchema>;
+export type TraceSummary = z.infer<typeof traceSummarySchema>;
+export type TraceStep = z.infer<typeof traceStepSchema>;
+export type TicketDetail = z.infer<typeof ticketDetailSchema>;

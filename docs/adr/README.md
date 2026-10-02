@@ -16,3 +16,4 @@
 | [0012](0012-idempotent-writes-and-approval-gate.md) | Low-risk writes are idempotent and sensitive writes wait |
 | [0013](0013-customer-approvals-expire.md) | Customer approvals expire and bind one arguments hash |
 | [0014](0014-session-memory-is-separate-from-the-transcript.md) | Session memory is separate from the transcript |
+| [0015](0015-human-and-assistant-share-a-conversation.md) | A person and the assistant share one conversation |

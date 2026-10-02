@@ -7,8 +7,14 @@ from uuid import UUID
 from assistflow_contracts.approval import ApprovalStatus
 from assistflow_contracts.conversation import ConversationChannel, ConversationStatus, MessageRole
 from assistflow_customers.errors import SupportError, require_tenant_id
-from assistflow_customers.paging import RecordPage, apply_keyset, decode_cursor, split_page
-from sqlalchemy import select
+from assistflow_customers.paging import (
+    RecordPage,
+    apply_keyset,
+    apply_keyset_desc,
+    decode_cursor,
+    split_page,
+)
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from assistflow_conversations.models import (
@@ -32,6 +38,7 @@ class ConversationRecord:
     agent_session_id: str | None
     created_at: datetime
     updated_at: datetime
+    assigned_to: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +49,8 @@ class MessageRecord:
     content: str
     created_at: datetime
     citations: tuple[tuple[str, str | None], ...] = ()
+    author_type: str = "model"
+    author_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +77,7 @@ def _conversation(row: ConversationRow) -> ConversationRecord:
         agent_session_id=row.agent_session_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        assigned_to=row.assigned_to,
     )
 
 
@@ -94,6 +104,8 @@ def _message(row: MessageRow) -> MessageRecord:
         content=row.content,
         created_at=row.created_at,
         citations=_citations(row.citations),
+        author_type=row.author_type or "model",
+        author_name=row.author_name,
     )
 
 
@@ -165,6 +177,62 @@ class ConversationRepository:
         rows = [_conversation(row) for row in self._session.scalars(statement.limit(limit + 1))]
         return split_page(rows, limit, lambda item: item.created_at, lambda item: item.id)
 
+    def list_by_status(
+        self,
+        tenant_id: UUID,
+        statuses: tuple[ConversationStatus, ...],
+        *,
+        cursor: str | None,
+        limit: int,
+    ) -> RecordPage[ConversationRecord]:
+        """Newest update first. An empty status list matches nothing."""
+        tenant_id = require_tenant_id(tenant_id)
+        if not statuses:
+            return RecordPage(items=[], next_cursor=None)
+        statement = apply_keyset_desc(
+            select(ConversationRow).where(
+                ConversationRow.tenant_id == tenant_id,
+                ConversationRow.status.in_([item.value for item in statuses]),
+            ),
+            ConversationRow.updated_at,
+            ConversationRow.id,
+            decode_cursor(cursor) if cursor else None,
+        )
+        rows = [_conversation(row) for row in self._session.scalars(statement.limit(limit + 1))]
+        return split_page(rows, limit, lambda item: item.updated_at, lambda item: item.id)
+
+    def count_status(self, tenant_id: UUID, status: ConversationStatus) -> int:
+        tenant_id = require_tenant_id(tenant_id)
+        found = self._session.scalar(
+            select(func.count())
+            .select_from(ConversationRow)
+            .where(
+                ConversationRow.tenant_id == tenant_id,
+                ConversationRow.status == status.value,
+            )
+        )
+        return int(found or 0)
+
+    def assign(
+        self,
+        tenant_id: UUID,
+        conversation_id: UUID,
+        assigned_to: UUID,
+        updated_at: datetime,
+    ) -> ConversationRecord:
+        require_tenant_id(tenant_id)
+        row = self._session.get(ConversationRow, conversation_id)
+        if row is None or row.tenant_id != tenant_id:
+            raise SupportError(
+                "conversation_not_found",
+                f"Conversation {conversation_id} was not found.",
+                404,
+            )
+        row.assigned_to = assigned_to
+        row.updated_at = updated_at
+        self._session.flush()
+        return _conversation(row)
+
     def insert(self, record: ConversationRecord) -> None:
         require_tenant_id(record.tenant_id)
         self._session.add(
@@ -175,6 +243,7 @@ class ConversationRepository:
                 channel=record.channel.value,
                 status=record.status.value,
                 agent_session_id=record.agent_session_id,
+                assigned_to=record.assigned_to,
                 created_at=record.created_at,
                 updated_at=record.updated_at,
             )
@@ -272,6 +341,27 @@ class MessageRepository:
                 found[row.conversation_id] = row.content
         return found
 
+    def latest_visible_contents(
+        self, tenant_id: UUID, conversation_ids: list[UUID]
+    ) -> dict[UUID, str]:
+        """Last customer, assistant, or system line. Tool rows stay out of the preview."""
+        if not conversation_ids:
+            return {}
+        ConversationRepository(self._session).require(tenant_id, conversation_ids[0])
+        rows = self._session.scalars(
+            select(MessageRow)
+            .where(
+                MessageRow.conversation_id.in_(conversation_ids),
+                MessageRow.role != MessageRole.TOOL.value,
+            )
+            .order_by(MessageRow.created_at.desc(), MessageRow.id.desc())
+        )
+        found: dict[UUID, str] = {}
+        for row in rows:
+            if row.conversation_id not in found:
+                found[row.conversation_id] = row.content
+        return found
+
     def insert(self, tenant_id: UUID, record: MessageRecord) -> None:
         ConversationRepository(self._session).require(tenant_id, record.conversation_id)
         self._session.add(
@@ -284,6 +374,8 @@ class MessageRepository:
                 citations=[
                     {"title": title, "version": version} for title, version in record.citations
                 ],
+                author_type=record.author_type,
+                author_name=record.author_name,
             )
         )
 
@@ -441,6 +533,7 @@ class ToolExecutionRecord:
     started_at: datetime
     finished_at: datetime | None
     result_summary: str
+    error_code: str | None = None
 
 
 def _tool_execution(row: ToolExecutionRow) -> ToolExecutionRecord:
@@ -458,6 +551,7 @@ def _tool_execution(row: ToolExecutionRow) -> ToolExecutionRecord:
         started_at=row.started_at,
         finished_at=row.finished_at,
         result_summary=row.result_summary,
+        error_code=row.error_code,
     )
 
 
@@ -485,6 +579,7 @@ class ToolExecutionRepository:
                 started_at=record.started_at,
                 finished_at=record.finished_at,
                 result_summary=record.result_summary,
+                error_code=record.error_code,
             )
         )
 

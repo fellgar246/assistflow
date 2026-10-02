@@ -6,9 +6,6 @@ The data-plane client is built only when the hosted runtime is enabled.
 from typing import Protocol
 
 from assistflow_contracts.agent import AgentResult, AgentRunner, ModelAdapter, TurnContext
-from assistflow_test_fixtures.agent_scripts import follow_up_calls, reply_from_tools, select_script
-
-from assistflow_api.config import ExecutionMode, ModelProvider, Settings, repo_root
 from assistflow_runtime.gateway import ToolGateway
 from assistflow_runtime.guardrails import GuardrailStrengths, build_guardrail_filter
 from assistflow_runtime.hosted_runner import (
@@ -22,6 +19,9 @@ from assistflow_runtime.loop import AgentLoop
 from assistflow_runtime.mock_adapter import MockModelAdapter
 from assistflow_runtime.prompts import PromptRegistry
 from assistflow_runtime.quota import SessionQuota
+from assistflow_test_fixtures.agent_scripts import follow_up_calls, reply_from_tools, select_script
+
+from assistflow_api.config import ExecutionMode, ModelProvider, Settings, repo_root
 
 
 def build_model_adapter(settings: Settings) -> ModelAdapter:

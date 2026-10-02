@@ -11,12 +11,12 @@ import sys
 from typing import Any
 
 from assistflow_contracts.agent import TurnContext
+from assistflow_runtime.handler import invoke_turn
 from sqlalchemy.orm import Session
 
 from assistflow_api.agents import InProcessAgentRunner, build_model_adapter
 from assistflow_api.config import Settings, load_settings
 from assistflow_api.db import create_db_engine
-from assistflow_runtime.handler import invoke_turn
 
 
 def run_payload(session: Session, settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:

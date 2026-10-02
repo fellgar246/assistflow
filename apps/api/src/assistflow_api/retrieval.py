@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from assistflow_knowledge.retriever import KnowledgeRetriever
+from assistflow_knowledge.selection import build_retriever
 from sqlalchemy.orm import Session
 
 from assistflow_api.config import Settings, validate_retrieval_settings
-from assistflow_knowledge.retriever import KnowledgeRetriever
-from assistflow_knowledge.selection import build_retriever
 
 if TYPE_CHECKING:
     from assistflow_knowledge.managed import ManagedRetrievalClient

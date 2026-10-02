@@ -10,10 +10,19 @@ type ComposerProps = {
   disabled?: boolean;
   sending?: boolean;
   notice?: string;
+  placeholder?: string;
+  footer?: string | null;
   onSend: (content: string) => void;
 };
 
-export function Composer({ disabled = false, sending = false, notice, onSend }: ComposerProps) {
+export function Composer({
+  disabled = false,
+  sending = false,
+  notice,
+  placeholder = "Ask about an order, delivery, return, or refund",
+  footer,
+  onSend,
+}: ComposerProps) {
   const labelId = useId();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState("");
@@ -59,7 +68,7 @@ export function Composer({ disabled = false, sending = false, notice, onSend }: 
           rows={1}
           value={draft}
           aria-labelledby={labelId}
-          placeholder="Ask about an order, delivery, return, or refund"
+          placeholder={placeholder}
           disabled={disabled || sending}
           onChange={(event) => setDraft(event.target.value.slice(0, LIMIT))}
           onKeyDown={onKeyDown}
@@ -79,9 +88,12 @@ export function Composer({ disabled = false, sending = false, notice, onSend }: 
           {draft.length} / {LIMIT}
         </p>
       ) : null}
-      <p className="mx-auto mt-2 max-w-3xl text-xs text-muted">
-        AssistFlow is automated and can make mistakes. Changes always need your confirmation.
-      </p>
+      {footer === null ? null : (
+        <p className="mx-auto mt-2 max-w-3xl text-xs text-muted">
+          {footer ??
+            "AssistFlow is automated and can make mistakes. Changes always need your confirmation."}
+        </p>
+      )}
     </form>
   );
 }

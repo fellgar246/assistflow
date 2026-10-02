@@ -6,11 +6,11 @@ The database URL comes from application settings. The first revision is empty.
 from logging.config import fileConfig
 
 from alembic import context
+from assistflow_customers.db import Base
 from sqlalchemy import engine_from_config, pool
 
 from assistflow_api.config import load_settings
 from assistflow_api.schema import load_models
-from assistflow_customers.db import Base
 
 config = context.config
 

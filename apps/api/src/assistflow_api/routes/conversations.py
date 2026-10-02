@@ -15,6 +15,7 @@ from assistflow_contracts.conversation import (
     ConversationStatus,
     CustomerMessageCreate,
     Message,
+    MessageAuthor,
     MessagePage,
     MessageRole,
     OpenConversation,
@@ -32,6 +33,7 @@ from assistflow_conversations.repository import (
     MessageRepository,
 )
 from assistflow_customers.errors import SupportError
+from assistflow_runtime.redaction import redact_text
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -42,7 +44,6 @@ from assistflow_api.approvals import confirm_stored_approval, present_approval
 from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query
 from assistflow_api.turns import complete_agent_turn, tool_activity_for
-from assistflow_runtime.redaction import redact_text
 
 router = APIRouter()
 
@@ -202,7 +203,7 @@ def post_customer_message(
                 session,
                 actor.tenant_id,
                 actor.customer_id,
-                conversation_id,
+                result.conversation_id,
                 result.message.id,
                 content,
                 body.idempotency_key,
@@ -215,6 +216,7 @@ def post_customer_message(
             )
     if result.replayed:
         response.status_code = 200
+    response.headers["X-Conversation-Id"] = str(result.conversation_id)
     _stamp(response, correlation)
     return result.message
 
@@ -263,6 +265,8 @@ def read_transcript(
                 citations=[
                     Citation(title=title, version=version) for title, version in item.citations
                 ],
+                author_type=MessageAuthor(item.author_type),
+                author_name=item.author_name,
             )
             for item in visible
         ],

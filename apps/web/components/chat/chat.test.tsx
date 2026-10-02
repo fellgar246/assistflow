@@ -15,6 +15,7 @@ const message = (overrides: Partial<Message> = {}): Message => ({
   citations: [],
   tool_activity: [],
   approvals: [],
+  author_type: "model",
   ...overrides,
 });
 
@@ -58,6 +59,48 @@ describe("transcript states", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("couldn't load this conversation");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("labels a human reply as a person and skips sources", () => {
+    render(
+      <Transcript
+        messages={[
+          message({
+            role: "assistant",
+            author_type: "support_agent",
+            author_name: "Nora Hale",
+            content: "I can help with that order.",
+            citations: [{ title: "Shipping policy", version: "3" }],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Nora")).toBeInTheDocument();
+    expect(screen.getByText("· Support team")).toBeInTheDocument();
+    expect(screen.getByText("I can help with that order.")).toBeInTheDocument();
+    expect(screen.queryByText("Automated")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
+  });
+
+  it("labels a human reply as a person and not as an automated answer", () => {
+    render(
+      <Transcript
+        messages={[
+          message({
+            role: "assistant",
+            author_type: "support_agent",
+            author_name: "Nora Hale",
+            content: "I can help with that order.",
+            citations: [{ title: "Shipping policy", version: "3" }],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Nora")).toBeInTheDocument();
+    expect(screen.getByText("· Support team")).toBeInTheDocument();
+    expect(screen.getByText("I can help with that order.")).toBeInTheDocument();
+    expect(screen.queryByText("Automated")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
   });
 
   it("announces messages from a polite live region", () => {

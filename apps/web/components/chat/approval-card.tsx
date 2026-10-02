@@ -9,6 +9,9 @@ type ApprovalCardProps = {
   submitting?: boolean;
   pendingAction?: "confirm" | "reject" | null;
   error?: string | null;
+  audience?: "customer" | "staff";
+  customerName?: string;
+  approverName?: string;
   onConfirm: (approvalId: string) => void;
   onCancel: (approvalId: string) => void;
   onDismissError?: (approvalId: string) => void;
@@ -32,6 +35,9 @@ export function ApprovalCard({
   submitting = false,
   pendingAction = null,
   error = null,
+  audience = "customer",
+  customerName,
+  approverName,
   onConfirm,
   onCancel,
   onDismissError,
@@ -93,6 +99,9 @@ export function ApprovalCard({
       <h2 id={titleId} className="text-base font-semibold text-text">
         {title}
       </h2>
+      {audience === "staff" && customerName ? (
+        <p className="mt-1 text-sm text-text">On behalf of {customerName}</p>
+      ) : null}
       <p className="mt-1 text-sm text-muted">Order {change.order_number}</p>
       {expanded ? <Diff change={change} muted={approval.status === "expired"} /> : null}
       {change.kind === "refund" && (pending || submitting || failed || expanded) ? (
@@ -103,7 +112,7 @@ export function ApprovalCard({
         tabIndex={-1}
         className={`mt-3 text-sm outline-none ${failed ? "text-danger" : "text-text"}`}
       >
-        {statusCopy(approval, submitting, pendingAction, error)}
+        {statusCopy(approval, submitting, pendingAction, error, audience, approverName)}
       </p>
       {pending || submitting ? (
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
@@ -114,7 +123,11 @@ export function ApprovalCard({
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
-            {submitting && pendingAction !== "reject" ? "Confirming…" : CONFIRM_LABEL[change.kind]}
+            {submitting && pendingAction !== "reject"
+              ? "Confirming…"
+              : audience === "staff"
+                ? "Approve as support agent"
+                : CONFIRM_LABEL[change.kind]}
           </button>
           <button
             type="button"
@@ -271,6 +284,8 @@ function statusCopy(
   submitting: boolean,
   pendingAction: "confirm" | "reject" | null,
   error: string | null,
+  audience: "customer" | "staff",
+  approverName?: string,
 ): string {
   if (submitting) {
     return pendingAction === "reject" ? "Cancelling…" : "Confirming…";
@@ -282,6 +297,11 @@ function statusCopy(
     return "Nothing changes until you confirm.";
   }
   if (approval.status === "consumed") {
+    if (audience === "staff" && approverName) {
+      const when = approval.approved_at ? formatConfirmed(approval.approved_at) : "";
+      const stamp = when ? ` · ${when}` : "";
+      return `Approved by ${approverName} (support)${stamp}.`;
+    }
     return receipt(approval);
   }
   if (approval.status === "rejected") {

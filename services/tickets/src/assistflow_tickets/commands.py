@@ -175,6 +175,7 @@ def add_ticket_note(
         ticket_id=ticket.id,
         body=body,
         created_at=created_at,
+        author_type=_note_author(actor_type),
     )
     TicketNoteRepository(session).insert(record)
     _audit(
@@ -300,6 +301,14 @@ def request_human_escalation(
         status=ConversationStatus.ESCALATED.value,
         replayed=False,
     )
+
+
+def _note_author(actor_type: str) -> str:
+    if actor_type == "system":
+        return "system"
+    if actor_type == "support_agent":
+        return "support"
+    return "customer"
 
 
 def _audit(

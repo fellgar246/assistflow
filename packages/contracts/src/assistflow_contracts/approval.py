@@ -70,6 +70,7 @@ class ApprovalView(BaseModel):
     requested_at: JsonDateTime
     expires_at: JsonDateTime
     approved_at: JsonDateTime | None = None
+    approved_by: UUID | None = None
 
 
 class ApprovalDecision(BaseModel):

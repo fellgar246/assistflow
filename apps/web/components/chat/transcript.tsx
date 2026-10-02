@@ -13,6 +13,9 @@ type TranscriptProps = {
   busyApprovalId?: string | null;
   pendingAction?: "confirm" | "reject" | null;
   approvalError?: { id: string; message: string } | null;
+  approvalAudience?: "customer" | "staff";
+  customerName?: string;
+  approverNameFor?: (approvedBy: string | null | undefined) => string | undefined;
   onConfirmApproval?: (approvalId: string) => void;
   onCancelApproval?: (approvalId: string) => void;
   onDismissApprovalError?: (approvalId: string) => void;
@@ -23,7 +26,15 @@ function sameGroup(previous: Message | undefined, current: Message): boolean {
   if (!previous || previous.role !== current.role) {
     return false;
   }
+  if ((previous.author_type ?? "model") !== (current.author_type ?? "model")) {
+    return false;
+  }
   return new Date(current.created_at).getTime() - new Date(previous.created_at).getTime() <= GROUP_WINDOW_MS;
+}
+
+function firstName(name: string | null | undefined): string {
+  const part = name?.trim().split(" ")[0];
+  return part || "Support";
 }
 
 export function Transcript({
@@ -31,6 +42,9 @@ export function Transcript({
   busyApprovalId = null,
   pendingAction = null,
   approvalError = null,
+  approvalAudience = "customer",
+  customerName,
+  approverNameFor,
   onConfirmApproval,
   onCancelApproval,
   onDismissApprovalError,
@@ -61,6 +75,9 @@ export function Transcript({
               busyApprovalId={busyApprovalId}
               pendingAction={pendingAction}
               approvalError={approvalError}
+              approvalAudience={approvalAudience}
+              customerName={customerName}
+              approverNameFor={approverNameFor}
               onConfirmApproval={onConfirmApproval}
               onCancelApproval={onCancelApproval}
               onDismissApprovalError={onDismissApprovalError}
@@ -79,6 +96,9 @@ function MessageView({
   busyApprovalId,
   pendingAction,
   approvalError,
+  approvalAudience,
+  customerName,
+  approverNameFor,
   onConfirmApproval,
   onCancelApproval,
   onDismissApprovalError,
@@ -89,6 +109,9 @@ function MessageView({
   busyApprovalId: string | null;
   pendingAction: "confirm" | "reject" | null;
   approvalError: { id: string; message: string } | null;
+  approvalAudience: "customer" | "staff";
+  customerName?: string;
+  approverNameFor?: (approvedBy: string | null | undefined) => string | undefined;
   onConfirmApproval?: (approvalId: string) => void;
   onCancelApproval?: (approvalId: string) => void;
   onDismissApprovalError?: (approvalId: string) => void;
@@ -100,6 +123,28 @@ function MessageView({
         <span className="sr-only">System said </span>
         {message.content}
       </p>
+    );
+  }
+  if (message.author_type === "support_agent") {
+    const name = firstName(message.author_name);
+    return (
+      <article className="max-w-prose rounded-2xl border border-human/20 bg-human-soft px-4 py-2">
+        {showLabel ? (
+          <p className="mb-1 text-sm font-medium text-human">
+            <span className="sr-only">{`Support agent ${name} said `}</span>
+            {name}
+            <span className="ml-1 text-xs font-medium">· Support team</span>
+          </p>
+        ) : null}
+        <p className="text-[15px] leading-6 break-words text-text">{message.content}</p>
+        <time
+          dateTime={message.created_at}
+          title={absoluteTime(message.created_at)}
+          className="mt-1 block text-xs text-muted"
+        >
+          {relativeTime(message.created_at)}
+        </time>
+      </article>
     );
   }
   if (message.role === "customer") {
@@ -133,9 +178,12 @@ function MessageView({
       <ToolActivityRow items={message.tool_activity} />
       <p className="text-[15px] leading-6 break-words text-text">{message.content}</p>
       {message.approvals.map((approval) => (
-        <ApprovalCard
+          <ApprovalCard
           key={approval.id}
           approval={approval}
+          audience={approvalAudience}
+          customerName={customerName}
+          approverName={approverNameFor?.(approval.approved_by)}
           submitting={busyApprovalId === approval.id}
           pendingAction={busyApprovalId === approval.id ? pendingAction : null}
           error={approvalError?.id === approval.id ? approvalError.message : null}

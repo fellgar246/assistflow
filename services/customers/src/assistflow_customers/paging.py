@@ -47,6 +47,23 @@ class RecordPage[ItemT]:
     next_cursor: str | None
 
 
+def apply_keyset_desc[RowT](
+    statement: Select[tuple[RowT]],
+    created_at: object,
+    entity_id: object,
+    cursor: PageCursor | None,
+) -> Select[tuple[RowT]]:
+    """Page newest-first. The cursor is the last row the client already has."""
+    created = cast(ColumnElement[object], created_at)
+    identity = cast(ColumnElement[object], entity_id)
+    if cursor is None:
+        return statement.order_by(created.desc(), identity.desc())
+    return statement.where(
+        (created < cursor.created_at)
+        | ((created == cursor.created_at) & (identity < cursor.entity_id))
+    ).order_by(created.desc(), identity.desc())
+
+
 def apply_keyset[RowT](
     statement: Select[tuple[RowT]],
     created_at: object,

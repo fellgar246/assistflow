@@ -71,6 +71,22 @@ class TicketRepository:
         )
         return list(self._session.scalars(statement))
 
+    def list_for_conversations(
+        self, tenant_id: UUID, conversation_ids: list[UUID]
+    ) -> list[TicketRecord]:
+        tenant_id = require_tenant_id(tenant_id)
+        if not conversation_ids:
+            return []
+        statement = (
+            select(TicketRow)
+            .where(
+                TicketRow.tenant_id == tenant_id,
+                TicketRow.conversation_id.in_(conversation_ids),
+            )
+            .order_by(TicketRow.created_at, TicketRow.id)
+        )
+        return [_ticket(row) for row in self._session.scalars(statement)]
+
     def list_for_customer(
         self, tenant_id: UUID, customer_id: UUID, *, cursor: str | None, limit: int
     ) -> RecordPage[TicketRecord]:
@@ -136,6 +152,7 @@ class TicketNoteRecord:
     ticket_id: UUID
     body: str
     created_at: datetime
+    author_type: str = "customer"
 
 
 class TicketNoteRepository:
@@ -150,6 +167,29 @@ class TicketNoteRepository:
                 tenant_id=record.tenant_id,
                 ticket_id=record.ticket_id,
                 body=record.body,
+                author_type=record.author_type,
                 created_at=record.created_at,
             )
         )
+
+    def list_for_ticket(self, tenant_id: UUID, ticket_id: UUID) -> list[TicketNoteRecord]:
+        tenant_id = require_tenant_id(tenant_id)
+        rows = self._session.scalars(
+            select(TicketNoteRow)
+            .where(
+                TicketNoteRow.tenant_id == tenant_id,
+                TicketNoteRow.ticket_id == ticket_id,
+            )
+            .order_by(TicketNoteRow.created_at, TicketNoteRow.id)
+        )
+        return [
+            TicketNoteRecord(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                ticket_id=row.ticket_id,
+                body=row.body,
+                created_at=row.created_at,
+                author_type=row.author_type or "customer",
+            )
+            for row in rows
+        ]

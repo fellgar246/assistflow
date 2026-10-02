@@ -18,13 +18,6 @@ from assistflow_contracts.agent import (
 )
 from assistflow_contracts.conversation import MessageRole
 from assistflow_conversations.repository import AgentTraceRepository
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-
-from assistflow_api.config import repo_root
-from assistflow_api.turns import complete_agent_turn
 from assistflow_knowledge.embeddings import DeterministicEmbedding
 from assistflow_knowledge.ingest import ingest_text, retire_document
 from assistflow_knowledge.models import KnowledgeDocumentRow
@@ -32,6 +25,13 @@ from assistflow_knowledge.retriever import LocalKnowledgeRetriever
 from assistflow_runtime.limits import TurnLimits
 from assistflow_runtime.loop import ABSTAIN_MESSAGE, AgentLoop
 from assistflow_runtime.prompts import PromptRegistry
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from assistflow_api.config import repo_root
+from assistflow_api.turns import complete_agent_turn
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 FIELDLINE = UUID("22222222-2222-4222-8222-222222222222")

@@ -20,14 +20,6 @@ from assistflow_contracts.agent import (
     ToolUseRequest,
     TurnContext,
 )
-from fastapi.testclient import TestClient
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-
-from assistflow_api.config import RagProvider, load_settings, repo_root
-from assistflow_api.main import create_app
-from assistflow_api.retrieval import build_knowledge_retriever
-from assistflow_api.sync_knowledge import require_s3_sync
 from assistflow_knowledge.catalog import PublishedDocument
 from assistflow_knowledge.chunking import chunk_text
 from assistflow_knowledge.documents import dumps_document, loads_document
@@ -41,6 +33,14 @@ from assistflow_runtime.limits import TurnLimits
 from assistflow_runtime.loop import AgentLoop
 from assistflow_runtime.prompts import PromptRegistry
 from assistflow_tools import LocalToolGateway, build_registry, service_handlers
+from fastapi.testclient import TestClient
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from assistflow_api.config import RagProvider, load_settings, repo_root
+from assistflow_api.main import create_app
+from assistflow_api.retrieval import build_knowledge_retriever
+from assistflow_api.sync_knowledge import require_s3_sync
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 FIELDLINE = UUID("22222222-2222-4222-8222-222222222222")

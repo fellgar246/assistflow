@@ -37,6 +37,7 @@ npm --prefix apps/web run dev
 - API health: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
 - Web home: [http://127.0.0.1:3000](http://127.0.0.1:3000)
 - Customer chat: [http://127.0.0.1:3000/chat](http://127.0.0.1:3000/chat)
+- Support inbox: [http://127.0.0.1:3000/agent/inbox](http://127.0.0.1:3000/agent/inbox)
 
 The home page does not call a model. The API does not load a cloud SDK while AWS is disabled.
 
@@ -85,10 +86,23 @@ Support reads:
 | POST | `/conversations/{conversation_id}/approvals/{approval_id}/reject` |
 | GET | `/preferences` |
 | DELETE | `/preferences` |
+| GET | `/dev/staff` |
+| GET | `/staff/inbox` |
+| GET | `/staff/conversations/{conversation_id}` |
+| GET | `/staff/conversations/{conversation_id}/messages` |
+| GET | `/staff/conversations/{conversation_id}/trace` |
+| POST | `/staff/conversations/{conversation_id}/takeover` |
+| POST | `/staff/conversations/{conversation_id}/messages` |
+| POST | `/staff/conversations/{conversation_id}/resolve` |
+| POST | `/staff/conversations/{conversation_id}/approvals/{approval_id}/confirm` |
+| POST | `/staff/conversations/{conversation_id}/approvals/{approval_id}/reject` |
+| GET | `/staff/tickets/{ticket_id}` |
 
 `POST /conversations/{conversation_id}/messages` stores the customer text. When `AI_ENABLED=true` (the local default), the API runs an in-process assistant and stores its reply plus a trace. That reply asks for an order number or a narrower question. It does not state a delivery date, and it does not call a hosted model. When `AI_ENABLED=false`, the route stores one fixed acknowledgement on the first customer message and does not state an order fact. History sent to the assistant is the newest 20 messages, and older messages are also dropped while a four-characters-per-token estimate exceeds 4000. Older rows stay in the database. `GET /conversations/{conversation_id}` returns one conversation for the current customer. `POST /tickets` may include `conversation_id` when the conversation is open in the same tenant.
 
-While `EXECUTION_MODE=local`, `GET /dev/actors` lists the seeded customers the chat can act as. The chat shows that choice in a control marked "Development only". It is a named customer, not a tenant id field, and the route is not available in other execution modes. The web app proxies `/api/*` to the API.
+A resolved conversation stays closed. When the customer sends another message, the API opens a new conversation, stores the message there, and returns that id in `X-Conversation-Id`. The previous thread is unchanged.
+
+While `EXECUTION_MODE=local`, `GET /dev/actors` lists the seeded customers the chat can act as. The chat shows that choice in a control marked "Development only". It is a named customer, not a tenant id field, and the route is not available in other execution modes. `GET /dev/staff` lists the seeded support agents the same way. Staff routes read `X-Tenant-Id` and `X-Agent-Id`. They are development-only and return not found outside local mode. The inbox lists conversations that are escalated or waiting for confirmation, newest update first. Take over assigns the conversation and its ticket. A human reply is stored as an assistant message with author type `support_agent`, so the customer thread can label it as a person. Resolve closes the conversation and the linked ticket, and repeating it does not close them again. Staff confirmation of a pending change uses the same stored arguments and hash check as the customer confirmation, and records the staff agent as `approved_by`. The trace summary shows kind, tool name, status, latency, and an error code. It does not include provider payloads. The web app proxies `/api/*` to the API. The console does not call a model to render a page.
 
 List routes take `limit` (default 20, maximum 100) and an opaque `cursor`. The generated API document is at [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json).
 

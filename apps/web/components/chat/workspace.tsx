@@ -99,8 +99,8 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
         throw new Error("No local customer is selected.");
       }
       const conversation = await createConversation(headers, crypto.randomUUID());
-      await postMessage(headers, conversation.id, content, crypto.randomUUID());
-      return conversation.id;
+      const posted = await postMessage(headers, conversation.id, content, crypto.randomUUID());
+      return posted.conversationId;
     },
     onSuccess: async (id) => {
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -113,12 +113,16 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
       if (!headers || !conversationId) {
         throw new Error("No conversation is open.");
       }
-      return postMessage(headers, conversationId, content, crypto.randomUUID());
+      const posted = await postMessage(headers, conversationId, content, crypto.randomUUID());
+      return posted.conversationId;
     },
-    onSuccess: async () => {
+    onSuccess: async (id) => {
       await queryClient.invalidateQueries({ queryKey: ["transcript", conversationId] });
       await queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] });
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      if (id !== conversationId) {
+        router.push(`/chat/${id}`);
+      }
     },
   });
 
@@ -267,9 +271,11 @@ export function ChatWorkspace({ conversationId }: WorkspaceProps) {
           sending={sendMutation.isPending || createMutation.isPending}
           disabled={headers === null || (conversationId !== undefined && threadFailed)}
           notice={
-            conversationQuery.data?.status === "waiting_approval"
-              ? "Confirm or cancel the pending change above, or keep chatting."
-              : undefined
+            conversationQuery.data?.status === "resolved"
+              ? "This conversation is resolved. Sending a message starts a new one."
+              : conversationQuery.data?.status === "waiting_approval"
+                ? "Confirm or cancel the pending change above, or keep chatting."
+                : undefined
           }
           onSend={send}
         />

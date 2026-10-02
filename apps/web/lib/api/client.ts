@@ -160,17 +160,32 @@ async function problemMessage(response: Response, action: "confirm" | "reject"):
   return fallback;
 }
 
-export function postMessage(
+export async function postMessage(
   actor: ActorHeaders,
   conversationId: string,
   content: string,
   idempotencyKey: string,
-): Promise<Message> {
+): Promise<{ message: Message; conversationId: string }> {
   const body = postMessageBodySchema.parse({ content, idempotency_key: idempotencyKey });
-  return request(
-    `/conversations/${conversationId}/messages`,
-    messageSchema,
-    { method: "POST", body: JSON.stringify(body) },
-    actor,
-  );
+  const headers = new Headers({ "Content-Type": "application/json" });
+  headers.set("X-Tenant-Id", actor.tenantId);
+  headers.set("X-Customer-Id", actor.customerId);
+  let response: Response;
+  try {
+    response = await fetch(`/api/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError("We couldn't load this conversation. Check your connection and try again.", 0);
+  }
+  if (!response.ok) {
+    throw new ApiError("We couldn't load this conversation. Check your connection and try again.", response.status);
+  }
+  const message = await parseBody(response, messageSchema);
+  return {
+    message,
+    conversationId: response.headers.get("X-Conversation-Id") ?? conversationId,
+  };
 }

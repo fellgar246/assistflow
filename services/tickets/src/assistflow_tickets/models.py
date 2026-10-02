@@ -38,4 +38,5 @@ class TicketNoteRow(Base):
     tenant_id: Mapped[UUID] = mapped_column(Uuid)
     ticket_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tickets.id"))
     body: Mapped[str] = mapped_column(String(2000))
+    author_type: Mapped[str] = mapped_column(String(32), default="customer")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)

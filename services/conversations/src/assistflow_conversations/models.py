@@ -19,6 +19,13 @@ class ConversationRow(Base):
             "created_at",
             "id",
         ),
+        Index(
+            "ix_conversations_tenant_status_updated",
+            "tenant_id",
+            "status",
+            "updated_at",
+            "id",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -27,6 +34,7 @@ class ConversationRow(Base):
     channel: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(32))
     agent_session_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    assigned_to: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
@@ -45,6 +53,8 @@ class MessageRow(Base):
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     citations: Mapped[list[dict[str, str | None]]] = mapped_column(JSON, default=list)
+    author_type: Mapped[str] = mapped_column(String(32), default="model")
+    author_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
 
 class AuditEventRow(Base):
@@ -144,6 +154,7 @@ class ToolExecutionRow(Base):
     started_at: Mapped[datetime] = mapped_column(UtcDateTime)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     result_summary: Mapped[str] = mapped_column(String(240))
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class ApprovalRequestRow(Base):

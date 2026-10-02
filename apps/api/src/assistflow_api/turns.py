@@ -37,11 +37,6 @@ from assistflow_conversations.repository import (
     ToolExecutionRecord,
     ToolExecutionRepository,
 )
-from sqlalchemy.orm import Session
-
-from assistflow_api.agents import TurnRunner
-from assistflow_api.config import Settings
-from assistflow_api.retrieval import build_knowledge_retriever
 from assistflow_knowledge.embeddings import DeterministicEmbedding
 from assistflow_knowledge.retriever import KnowledgeRetriever, LocalKnowledgeRetriever
 from assistflow_memory import (
@@ -65,6 +60,11 @@ from assistflow_tools import (
     service_handlers,
 )
 from assistflow_tools.writes import approved_write_handlers
+from sqlalchemy.orm import Session
+
+from assistflow_api.agents import TurnRunner
+from assistflow_api.config import Settings
+from assistflow_api.retrieval import build_knowledge_retriever
 
 logger = structlog.get_logger("assistflow.turn")
 
@@ -346,6 +346,7 @@ def _store_outcome(
         started_at=now,
         finished_at=now,
         result_summary=outcome.summary[:240],
+        error_code=outcome.error_code,
     )
     record_tool_execution(session, record, actor)
     append_message(

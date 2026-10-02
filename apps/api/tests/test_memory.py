@@ -19,9 +19,22 @@ from assistflow_conversations.commands import (
     open_conversation,
 )
 from assistflow_customers.errors import SupportError
+from assistflow_memory.allowlist import PREFERRED_LANGUAGE, PURPOSES
+from assistflow_memory.factory import MemoryPorts, build_memory_ports
+from assistflow_memory.hosted import AgentCorePreferenceMemory, AgentCoreSessionMemory
+from assistflow_memory.limits import MemoryLimitError
+from assistflow_memory.local_preferences import LocalPreferenceMemory
+from assistflow_memory.local_session import ORDER_KIND, LocalSessionMemory
+from assistflow_memory.models import MemoryPreferenceRow, SessionMemoryEventRow
 from assistflow_orders.repository import OrderRepository
+from assistflow_runtime.limits import TurnLimits
+from assistflow_runtime.loop import AgentLoop
+from assistflow_runtime.mock_adapter import MockModelAdapter
+from assistflow_runtime.prompts import PromptRegistry
 from assistflow_test_fixtures.agent_scripts import follow_up_calls, reply_from_tools, select_script
 from assistflow_test_fixtures.follow_ups import FOLLOW_UPS, score_follow_ups
+from assistflow_tools import LocalToolGateway, build_registry, service_handlers
+from assistflow_tools.writes import approved_write_handlers
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
@@ -31,19 +44,6 @@ from assistflow_api.agents import InProcessAgentRunner
 from assistflow_api.config import load_settings, repo_root
 from assistflow_api.main import create_app
 from assistflow_api.turns import complete_agent_turn
-from assistflow_memory.allowlist import PREFERRED_LANGUAGE, PURPOSES
-from assistflow_memory.factory import MemoryPorts, build_memory_ports
-from assistflow_memory.hosted import AgentCorePreferenceMemory, AgentCoreSessionMemory
-from assistflow_memory.limits import MemoryLimitError
-from assistflow_memory.local_preferences import LocalPreferenceMemory
-from assistflow_memory.local_session import ORDER_KIND, LocalSessionMemory
-from assistflow_memory.models import MemoryPreferenceRow, SessionMemoryEventRow
-from assistflow_runtime.limits import TurnLimits
-from assistflow_runtime.loop import AgentLoop
-from assistflow_runtime.mock_adapter import MockModelAdapter
-from assistflow_runtime.prompts import PromptRegistry
-from assistflow_tools import LocalToolGateway, build_registry, service_handlers
-from assistflow_tools.writes import approved_write_handlers
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 FIELDLINE = UUID("22222222-2222-4222-8222-222222222222")

@@ -46,6 +46,50 @@ LOCAL_ACTORS: tuple[LocalActorOption, ...] = (
 )
 
 
+class LocalStaffOption(BaseModel):
+    """A development staff member. This list is not a production directory."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    organization: str
+    tenant_id: UUID
+    agent_id: UUID
+
+
+class LocalStaffList(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    actors: list[LocalStaffOption]
+
+
+LOCAL_STAFF: tuple[LocalStaffOption, ...] = (
+    LocalStaffOption(
+        label="Nora Hale",
+        organization="Harbor Goods",
+        tenant_id=UUID("11111111-1111-4111-8111-111111111111"),
+        agent_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001"),
+    ),
+    LocalStaffOption(
+        label="Owen Blake",
+        organization="Fieldline Supply",
+        tenant_id=UUID("22222222-2222-4222-8222-222222222222"),
+        agent_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0002"),
+    ),
+)
+
+
+class StaffActor(BaseModel):
+    """Development staff caller. Tenant and agent id come from headers."""
+
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: UUID
+    agent_id: UUID
+    display_name: str
+    actor_type: str
+
+
 class Actor(BaseModel):
     """Server-side caller. Routes use this object instead of body-supplied identity."""
 
