@@ -79,6 +79,19 @@ resource "aws_lambda_function" "api" {
   reserved_concurrent_executions = 2
   tags                           = var.tags
 
+  environment {
+    variables = {
+      LOCAL_ONLY_MODE          = "true"
+      AWS_ENABLED              = "false"
+      AGENTCORE_ENABLED        = "false"
+      BEDROCK_ENABLED          = "false"
+      MANAGED_RAG_ENABLED      = "false"
+      LONG_TERM_MEMORY_ENABLED = "false"
+      GUARDRAILS_ENABLED       = "false"
+      AI_ENABLED               = "false"
+    }
+  }
+
   depends_on = [aws_iam_role_policy.api_logs]
 }
 

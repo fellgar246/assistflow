@@ -5,7 +5,6 @@ from uuid import UUID
 
 from assistflow_contracts.support import Problem
 from assistflow_customers.errors import SupportError
-from assistflow_knowledge.models import KnowledgeDocumentRow
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from assistflow_api.actor import Actor
 from assistflow_api.deps import get_session, require_customer
+from assistflow_knowledge.models import KnowledgeDocumentRow
 
 router = APIRouter()
 

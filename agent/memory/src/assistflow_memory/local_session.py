@@ -1,7 +1,7 @@
 """Database session memory. Events expire within the session limit."""
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from assistflow_contracts.memory import SessionFacts
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from assistflow_memory.limits import MemoryLimitError
 from assistflow_memory.models import SessionMemoryEventRow
+from assistflow_runtime.quota import memory_event_allowed, session_window
 from assistflow_runtime.redaction import redact_text
 
 ORDER_KIND = "last_order_id"
@@ -29,11 +30,9 @@ class LocalSessionMemory:
     def __init__(self, session: Session, max_events: int, max_session_minutes: int) -> None:
         if max_events < 1:
             raise ValueError("MAX_MEMORY_EVENTS_PER_SESSION must be at least 1.")
-        if max_session_minutes < 1:
-            raise ValueError("MAX_SESSION_MINUTES must be at least 1.")
         self._session = session
         self._max_events = max_events
-        self._ttl = timedelta(minutes=max_session_minutes)
+        self._ttl = session_window(max_session_minutes)
 
     def load(
         self,
@@ -81,7 +80,7 @@ class LocalSessionMemory:
             return
         _aware(now)
         active = self._active_count(tenant_id, customer_id, conversation_id, now)
-        if active >= self._max_events:
+        if not memory_event_allowed(active, self._max_events):
             raise MemoryLimitError(f"Session memory is limited to {self._max_events} events.")
         self._session.add(
             SessionMemoryEventRow(

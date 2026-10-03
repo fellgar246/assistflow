@@ -15,6 +15,7 @@ from assistflow_contracts.conversation import (
     MessageRole,
 )
 from assistflow_contracts.staff import (
+    CostCounters,
     InboxQueue,
     StaffCommand,
     StaffConversation,
@@ -28,7 +29,6 @@ from assistflow_conversations.approvals import ApprovalFailure, expire_elapsed, 
 from assistflow_conversations.commands import ActorContext
 from assistflow_conversations.repository import ConversationRepository, MessageRepository
 from assistflow_customers.errors import SupportError
-from assistflow_runtime.redaction import redact_text
 from assistflow_tickets.handoff import post_human_reply, resolve_case, take_over
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -37,9 +37,12 @@ from sqlalchemy.orm import Session
 from assistflow_api.actor import LOCAL_STAFF, LocalStaffList, StaffActor
 from assistflow_api.approvals import confirm_stored_approval, present_approval
 from assistflow_api.config import ExecutionMode, Settings
+from assistflow_api.correlation import metrics_snapshot
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query, require_staff
 from assistflow_api.staff_views import conversation_detail, inbox_page, ticket_detail, trace_summary
 from assistflow_api.turns import tool_activity_for
+from assistflow_runtime.quota import ExecutionQuota
+from assistflow_runtime.redaction import redact_text
 
 router = APIRouter()
 
@@ -58,6 +61,7 @@ Correlation = Annotated[str, Depends(correlation_id)]
 
 
 Staff = Annotated[StaffActor, Depends(require_staff)]
+_BUDGET_CONSOLE_URL = "https://console.aws.amazon.com/billing/home#/budgets"
 
 
 def _names(tenant_id: UUID) -> dict[UUID, str]:
@@ -83,6 +87,37 @@ def list_local_staff(request: Request) -> LocalStaffList:
     if not isinstance(settings, Settings) or settings.execution_mode is not ExecutionMode.LOCAL:
         raise SupportError("not_found", "This resource was not found.", 404)
     return LocalStaffList(actors=list(LOCAL_STAFF))
+
+
+@router.get("/staff/cost", response_model=CostCounters, responses=_ERRORS)
+def read_cost(
+    request: Request,
+    response: Response,
+    actor: Staff,
+    correlation: Correlation,
+) -> CostCounters:
+    """Session, token, and tool counters. The budget link is a console placeholder."""
+    del actor
+    _stamp(response, correlation)
+    quota = getattr(request.app.state, "quota", None)
+    totals = metrics_snapshot(request.app.state.metrics)
+    if isinstance(quota, ExecutionQuota):
+        sessions = quota.sessions_used()
+        session_limit = quota.limits.max_sessions_per_day
+        tool_limit = quota.limits.max_tool_calls_per_session
+    else:
+        sessions = 0
+        session_limit = 25
+        tool_limit = 15
+    return CostCounters(
+        sessions=sessions,
+        max_sessions_per_day=session_limit,
+        input_tokens=int(totals.get("model_input_tokens", 0)),
+        output_tokens=int(totals.get("model_output_tokens", 0)),
+        tool_calls=int(totals.get("tool_call_count", 0)),
+        max_tool_calls_per_session=tool_limit,
+        budget_console_url=_BUDGET_CONSOLE_URL,
+    )
 
 
 @router.get("/staff/inbox", response_model=StaffInboxPage, responses=_ERRORS)

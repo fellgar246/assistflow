@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from assistflow_memory.allowlist import PURPOSES, RETENTION_DAYS, validate_preference
 from assistflow_memory.limits import MemoryLimitError
 from assistflow_memory.local_session import ORDER_KIND, SHIPMENT_KIND, clean_session_value
+from assistflow_runtime.quota import memory_event_allowed, session_window
 from assistflow_runtime.redaction import redact_text
 
 
@@ -51,12 +52,10 @@ class AgentCoreSessionMemory:
             raise ValueError("A hosted memory id is required.")
         if max_events < 1:
             raise ValueError("MAX_MEMORY_EVENTS_PER_SESSION must be at least 1.")
-        if max_session_minutes < 1:
-            raise ValueError("MAX_SESSION_MINUTES must be at least 1.")
         self._client = client
         self._memory_id = memory_id
         self._max_events = max_events
-        self._ttl = timedelta(minutes=max_session_minutes)
+        self._ttl = session_window(max_session_minutes)
         self._customers = customers
 
     def load(
@@ -118,7 +117,7 @@ class AgentCoreSessionMemory:
             created = _timestamp(event.get("eventTimestamp"))
             if created is not None and created + self._ttl > now:
                 active += 1
-        if active >= self._max_events:
+        if not memory_event_allowed(active, self._max_events):
             raise MemoryLimitError(f"Session memory is limited to {self._max_events} events.")
         self._client.create_event(
             memoryId=self._memory_id,

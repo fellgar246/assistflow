@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test eval up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore smoke-gateway sync-knowledge aws-bootstrap aws-plan aws-deploy aws-smoke aws-cost-check aws-destroy
+.PHONY: lint typecheck test eval up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore smoke-gateway sync-knowledge aws-bootstrap aws-plan aws-deploy aws-smoke aws-cost-check aws-cleanup aws-destroy
 
 PYTHON_PATHS := src tests \
 	../../services/conversations/src \
@@ -92,6 +92,9 @@ aws-smoke:
 
 aws-cost-check:
 	$(UV) run --directory apps/api python ../../scripts/dev_environment.py cost-check
+
+aws-cleanup:
+	$(UV) run --directory apps/api python ../../scripts/cleanup_tagged.py
 
 aws-destroy:
 	$(UV) run --directory apps/api python ../../scripts/dev_environment.py destroy

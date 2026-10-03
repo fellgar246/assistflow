@@ -15,11 +15,12 @@ from assistflow_conversations.approvals import (
 from assistflow_conversations.commands import ActorContext
 from assistflow_conversations.repository import ApprovalRecord
 from assistflow_customers.errors import SupportError
+from sqlalchemy.orm import Session
+
 from assistflow_tools import build_registry, service_handlers
 from assistflow_tools.approval import issue_application_approval
 from assistflow_tools.models import ToolContext, ToolStatus
 from assistflow_tools.writes import approved_write_handlers
-from sqlalchemy.orm import Session
 
 
 def confirm_stored_approval(

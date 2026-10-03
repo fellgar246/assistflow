@@ -19,7 +19,12 @@ from assistflow_contracts.observe import (
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from assistflow_api.config import ExecutionMode, Settings
-from assistflow_api.logging import bind_production_logs, reset_production_logs
+from assistflow_api.logging import (
+    bind_production_logs,
+    bind_success_sampling,
+    reset_production_logs,
+    reset_success_sampling,
+)
 from assistflow_api.metrics import InMemoryMetrics
 
 logger = structlog.get_logger("assistflow.trace")
@@ -68,6 +73,7 @@ class CorrelationMiddleware:
         status_code = 500
         tokens = _bind_recorders(scope)
         production = bind_production_logs(_production_mode(scope))
+        sampling = bind_success_sampling(_sample_success_mode(scope))
 
         async def send_with_correlation(message: Message) -> None:
             nonlocal status_code
@@ -97,6 +103,7 @@ class CorrelationMiddleware:
                 error_code=error_code,
             )
             _reset_recorders(tokens)
+            reset_success_sampling(sampling)
             reset_production_logs(production)
             structlog.contextvars.clear_contextvars()
 
@@ -137,6 +144,16 @@ def _reset_recorders(tokens: tuple[Any, Any] | None) -> None:
         return
     reset_trace_store(tokens[0])
     reset_metrics(tokens[1])
+
+
+def _sample_success_mode(scope: Scope) -> bool:
+    """aws-demo keeps successful traces short. Local runs store the full safe line."""
+    app = scope.get("app")
+    state = getattr(app, "state", None)
+    settings = getattr(state, "settings", None)
+    if not isinstance(settings, Settings):
+        return False
+    return settings.success_trace_sampling
 
 
 def _production_mode(scope: Scope) -> bool:

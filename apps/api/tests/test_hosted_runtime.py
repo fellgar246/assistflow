@@ -22,6 +22,15 @@ from assistflow_contracts.agent import (
 from assistflow_contracts.conversation import MessageRole
 from assistflow_conversations.commands import ActorContext, append_message, open_conversation
 from assistflow_conversations.repository import AgentTraceRepository
+from fastapi.testclient import TestClient
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from assistflow_api.agents import InProcessAgentRunner, build_agent_runner, build_model_adapter
+from assistflow_api.config import Settings, load_settings, repo_root
+from assistflow_api.main import create_app
+from assistflow_api.runtime_entry import run_payload
+from assistflow_api.turns import build_turn_gateway, complete_agent_turn
 from assistflow_runtime.facts import domain_facts, order_facts_from_fixture
 from assistflow_runtime.handler import package_result
 from assistflow_runtime.hosted_runner import (
@@ -36,15 +45,6 @@ from assistflow_runtime.hosted_runner import (
 from assistflow_runtime.packaging import package_sources
 from assistflow_runtime.quota import SessionQuota
 from assistflow_runtime.session_ref import runtime_session_id
-from fastapi.testclient import TestClient
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-
-from assistflow_api.agents import InProcessAgentRunner, build_agent_runner, build_model_adapter
-from assistflow_api.config import Settings, load_settings, repo_root
-from assistflow_api.main import create_app
-from assistflow_api.runtime_entry import run_payload
-from assistflow_api.turns import build_turn_gateway, complete_agent_turn
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 FIELDLINE = UUID("22222222-2222-4222-8222-222222222222")

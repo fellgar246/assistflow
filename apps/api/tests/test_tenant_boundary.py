@@ -13,13 +13,7 @@ import structlog
 from assistflow_contracts.gateway import verify_actor_context
 from assistflow_contracts.support import ShippingAddress
 from assistflow_customers.errors import SupportError
-from assistflow_knowledge.embeddings import DeterministicEmbedding
-from assistflow_knowledge.ingest import ingest_text
-from assistflow_knowledge.models import KnowledgeDocumentRow
-from assistflow_memory.allowlist import PREFERRED_LANGUAGE
-from assistflow_memory.local_preferences import LocalPreferenceMemory
 from assistflow_orders.repository import OrderRepository
-from assistflow_runtime.gateway import AgentCoreToolGateway
 from assistflow_shipping.commands import update_shipping_address
 from assistflow_shipping.repository import ShipmentRepository
 from fastapi.testclient import TestClient
@@ -30,6 +24,12 @@ from sqlalchemy.orm import Session
 from assistflow_api.config import load_settings, repo_root
 from assistflow_api.main import create_app
 from assistflow_api.turns import build_turn_gateway, gateway_actor_for
+from assistflow_knowledge.embeddings import DeterministicEmbedding
+from assistflow_knowledge.ingest import ingest_text
+from assistflow_knowledge.models import KnowledgeDocumentRow
+from assistflow_memory.allowlist import PREFERRED_LANGUAGE
+from assistflow_memory.local_preferences import LocalPreferenceMemory
+from assistflow_runtime.gateway import AgentCoreToolGateway
 from tokens import customer_headers, remote_settings, staff_headers, token_for
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")

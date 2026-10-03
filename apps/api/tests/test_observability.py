@@ -17,7 +17,6 @@ from assistflow_contracts.agent import AdapterUsage, ModelText, ModelToolUse, To
 from assistflow_contracts.observe import METRIC_NAMES
 from assistflow_conversations.models import AgentTraceRow
 from assistflow_conversations.repository import AuditRepository, ToolExecutionRepository
-from assistflow_tools.faults import clear_faults, fail_tool_once
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
@@ -26,6 +25,7 @@ from sqlalchemy.orm import Session
 from assistflow_api.config import load_settings, repo_root
 from assistflow_api.logging import bind_production_logs, configure_logging, reset_production_logs
 from assistflow_api.metrics import InMemoryMetrics, build_metrics
+from assistflow_tools.faults import clear_faults, fail_tool_once
 from tokens import customer_headers
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")

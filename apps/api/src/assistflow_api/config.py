@@ -130,6 +130,7 @@ class Settings(BaseModel):
     managed_knowledge_bases: dict[str, str] = Field(default_factory=dict)
     managed_rag_metadata_key: str = ""
     guardrails_enabled: bool = False
+    success_trace_sampling: bool = False
     guardrail_id: str = ""
     guardrail_version: str = "DRAFT"
     guardrail_harmful_content_strength: str = "MEDIUM"
@@ -187,6 +188,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         rag_provider = RagProvider.LOCAL
         guardrails_enabled = False
         async_workers_enabled = False
+        ai_enabled = False
 
     knowledge_bucket = values.get("KNOWLEDGE_BUCKET", "").strip()
     knowledge_key_prefix = values.get("KNOWLEDGE_KEY_PREFIX", "").strip() or "tenants/{tenant_id}/"
@@ -255,6 +257,11 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         managed_knowledge_bases=managed_knowledge_bases,
         managed_rag_metadata_key=managed_rag_metadata_key,
         guardrails_enabled=guardrails_enabled,
+        success_trace_sampling=_optional_bool(
+            values,
+            "LOG_SUCCESS_SAMPLING",
+            mode is ExecutionMode.AWS_DEMO and not local_only,
+        ),
         guardrail_id=values.get("GUARDRAIL_ID", "").strip(),
         guardrail_version=values.get("GUARDRAIL_VERSION", "").strip() or "DRAFT",
         guardrail_harmful_content_strength=_strength(

@@ -54,6 +54,7 @@ from assistflow_runtime.guardrails import (
 from assistflow_runtime.history import estimate_tokens
 from assistflow_runtime.limits import TurnLimits
 from assistflow_runtime.prompts import PromptRegistry
+from assistflow_runtime.quota import SESSION_QUOTA_MESSAGE, provider_refusal, under_cap
 from assistflow_runtime.redaction import redact_data, redact_text
 
 _LOGGER = logging.getLogger("assistflow.turn")
@@ -79,6 +80,13 @@ _SUMMARY_LIMIT = 240
 ComposeFacts = Callable[[list[dict[str, Any]]], str]
 
 
+class SessionBudget(Protocol):
+    """Daily session reservation. A false result means the provider must not be called."""
+
+    def reserve(self, session_id: str) -> bool:
+        """Reserve one session id."""
+
+
 class ModelAdapterPort(Protocol):
     def complete(
         self,
@@ -102,6 +110,7 @@ class AgentLoop:
         *,
         store_debug: bool = False,
         guardrail: GuardrailFilter | None = None,
+        quota: SessionBudget | None = None,
     ) -> None:
         self._adapter = adapter
         self._gateway = gateway
@@ -110,6 +119,7 @@ class AgentLoop:
         self._compose = compose
         self._store_debug = store_debug
         self._guardrail = guardrail if guardrail is not None else NoOpGuardrailFilter()
+        self._quota = quota
 
     def run(self, turn_context: TurnContext) -> AgentResult:
         prompt = self._prompts.get(turn_context.prompt.id, turn_context.prompt.version)
@@ -167,8 +177,8 @@ class AgentLoop:
             )
 
         while True:
-            if len(steps) >= self._limits.max_agent_steps or (
-                model_calls >= self._limits.max_model_calls_per_turn
+            if not under_cap(len(steps), self._limits.max_agent_steps) or not under_cap(
+                model_calls, self._limits.max_model_calls_per_turn
             ):
                 return self._budget(
                     turn_context.prompt,
@@ -185,6 +195,36 @@ class AgentLoop:
                 return self._finish(
                     turn_context.prompt,
                     INPUT_LIMIT_MESSAGE,
+                    StopReason.FAILED,
+                    steps,
+                    executed,
+                    Usage(input_tokens=input_tokens, output_tokens=output_tokens),
+                    provider,
+                    model_id,
+                )
+            refusal = provider_refusal(
+                _token_total(trimmed),
+                self._limits.max_output_tokens,
+                max_input_tokens=self._limits.max_input_tokens,
+                max_output_tokens=self._limits.max_output_tokens,
+            )
+            if refusal is not None:
+                return self._finish(
+                    turn_context.prompt,
+                    refusal,
+                    StopReason.FAILED,
+                    steps,
+                    executed,
+                    Usage(input_tokens=input_tokens, output_tokens=output_tokens),
+                    provider,
+                    model_id,
+                )
+            if self._quota is not None and not self._quota.reserve(
+                str(turn_context.conversation_id)
+            ):
+                return self._finish(
+                    turn_context.prompt,
+                    SESSION_QUOTA_MESSAGE,
                     StopReason.FAILED,
                     steps,
                     executed,
@@ -315,12 +355,12 @@ class AgentLoop:
     ) -> tuple[bool, int]:
         """Execute listed proposals. A tier 2 call waits for approval. Return false at a cap."""
         for request in response.requests:
-            if len(steps) >= self._limits.max_agent_steps:
+            if not under_cap(len(steps), self._limits.max_agent_steps):
                 return False, retrievals
-            if len(executed) >= self._limits.max_tool_calls_per_turn:
+            if not under_cap(len(executed), self._limits.max_tool_calls_per_turn):
                 return False, retrievals
             if request.name == _RETRIEVAL_TOOL:
-                if retrievals >= self._limits.max_retrievals_per_turn:
+                if not under_cap(retrievals, self._limits.max_retrievals_per_turn):
                     return False, retrievals
                 retrievals += 1
             arguments = request.arguments if isinstance(request.arguments, dict) else {}
@@ -378,9 +418,8 @@ class AgentLoop:
                 else self._guardrail.inspect_input(text)
             )
             return decision, model_calls
-        if (
-            model_calls >= self._limits.max_model_calls_per_turn
-            or len(steps) >= self._limits.max_agent_steps
+        if not under_cap(model_calls, self._limits.max_model_calls_per_turn) or not under_cap(
+            len(steps), self._limits.max_agent_steps
         ):
             return (
                 GuardrailDecision(GuardrailAction.UNAVAILABLE, GUARDRAIL_UNAVAILABLE_MESSAGE),
@@ -463,7 +502,7 @@ class AgentLoop:
         provider: str,
         model_id: str,
     ) -> AgentResult:
-        if len(steps) < self._limits.max_agent_steps:
+        if under_cap(len(steps), self._limits.max_agent_steps):
             steps.append(
                 _step(len(steps), StepKind.BUDGET, 0, "stopped for a step, tool, or model limit")
             )

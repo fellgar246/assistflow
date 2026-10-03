@@ -1,7 +1,7 @@
 """In-process tool gateway. It delegates to the read registry and does not use the network."""
 
 import time
-from typing import Any
+from typing import Any, Protocol
 
 from assistflow_contracts.agent import ExecutedTool, ToolSchema
 from assistflow_contracts.gateway import (
@@ -21,6 +21,13 @@ from assistflow_tools.registry import ToolRegistry
 _APPROVAL_DESCRIPTION = "Requires approval. No change is saved until the application approves it."
 
 
+class ToolCallQuota(Protocol):
+    """Session tool cap shared with the hosted gateway. The decision lives in one module."""
+
+    def claim_tool_call(self, session_id: str) -> str | None:
+        """Reserve one tool call or return the denial message."""
+
+
 class LocalToolGateway:
     """List and call tools through the shared registry.
 
@@ -35,10 +42,12 @@ class LocalToolGateway:
         *,
         max_executions: int = 5,
         writes_enabled: bool = False,
+        tool_quota: ToolCallQuota | None = None,
     ) -> None:
         self._registry = registry
         self._max_executions = max_executions
         self._writes_enabled = writes_enabled
+        self._tool_quota = tool_quota
         self._used = 0
 
     def list_tools(self) -> list[ToolSchema]:
@@ -117,6 +126,15 @@ class LocalToolGateway:
         arguments: dict[str, Any],
         actor_context: GatewayActor,
     ) -> ExecutedTool:
+        if self._tool_quota is not None and actor_context.conversation_id is not None:
+            denial = self._tool_quota.claim_tool_call(str(actor_context.conversation_id))
+            if denial is not None:
+                return _denied(
+                    name,
+                    arguments_hash(name, arguments),
+                    "tool_quota_exceeded",
+                    denial,
+                )
         started = time.perf_counter()
         outcome = self._registry.execute(
             name,

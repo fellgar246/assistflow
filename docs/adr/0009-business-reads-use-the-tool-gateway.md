@@ -20,6 +20,8 @@ The gateway module stays off unless the hosted runtime is enabled. Pull-request 
 
 Revalidate current gateway pricing before apply. Prices are not hard-coded.
 
+The gateway control plane has no per-session throttle attribute. `MAX_TOOL_CALLS_PER_SESSION` is rendered on the tool function, and the application enforces that cap for hosted calls and for local calls that never open a gateway.
+
 ## Consequences
 
 - Local tests use the in-process adapter.

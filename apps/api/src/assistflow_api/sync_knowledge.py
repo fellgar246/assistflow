@@ -2,10 +2,9 @@
 
 import json
 
+from assistflow_api.config import RagProvider, Settings, load_settings, repo_root
 from assistflow_knowledge.sync import sync_documents
 from assistflow_tools.aws_retrieval import s3_store
-
-from assistflow_api.config import RagProvider, Settings, load_settings, repo_root
 
 
 def require_s3_sync(settings: Settings) -> None:

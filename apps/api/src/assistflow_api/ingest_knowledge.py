@@ -3,13 +3,13 @@
 import json
 from uuid import UUID
 
-from assistflow_knowledge.embeddings import DeterministicEmbedding
-from assistflow_knowledge.ingest import ingest_documents
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from assistflow_api.config import load_settings, repo_root
 from assistflow_api.schema import load_models
+from assistflow_knowledge.embeddings import DeterministicEmbedding
+from assistflow_knowledge.ingest import ingest_documents
 
 
 def ingest_published(engine: Engine, tenant_ids: list[UUID]) -> int:

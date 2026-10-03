@@ -18,15 +18,6 @@ from assistflow_contracts.agent import (
 from assistflow_contracts.conversation import MessageRole
 from assistflow_conversations.repository import AgentTraceRepository, ToolExecutionRepository
 from assistflow_customers.errors import SupportError
-from assistflow_runtime import (
-    BUDGET_MESSAGE,
-    HISTORY_MESSAGE_CAP,
-    MockAgentRunner,
-    PromptNotFoundError,
-    PromptRegistry,
-    TurnLimits,
-    bound_history,
-)
 from assistflow_test_fixtures.agent_scripts import (
     ASK_FOR_ORDER_NUMBER,
     ORDER_NUMBER_RECEIVED,
@@ -37,6 +28,15 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from assistflow_api.config import repo_root
+from assistflow_runtime import (
+    BUDGET_MESSAGE,
+    HISTORY_MESSAGE_CAP,
+    MockAgentRunner,
+    PromptNotFoundError,
+    PromptRegistry,
+    TurnLimits,
+    bound_history,
+)
 
 HARBOR = UUID("11111111-1111-4111-8111-111111111111")
 FIELDLINE = UUID("22222222-2222-4222-8222-222222222222")

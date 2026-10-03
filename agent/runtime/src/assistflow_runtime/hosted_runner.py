@@ -19,13 +19,10 @@ from assistflow_contracts.agent import (
 )
 from pydantic import ValidationError
 
-from assistflow_runtime.quota import SessionQuota
+from assistflow_runtime.quota import SESSION_QUOTA_MESSAGE, ExecutionQuota, SessionQuota
 from assistflow_runtime.session_ref import runtime_session_id
 
-QUOTA_MESSAGE = (
-    "The assistant has reached its daily session limit. Please try again tomorrow, "
-    "or wait for a person."
-)
+QUOTA_MESSAGE = SESSION_QUOTA_MESSAGE
 TIMEOUT_MESSAGE = "That request took too long. Please try again in a moment, or wait for a person."
 TRANSPORT_MESSAGE = (
     "I could not reach the assistant. Please try again in a moment, or wait for a person."
@@ -102,7 +99,7 @@ class AgentCoreRuntimeRunner:
     def __init__(
         self,
         transport: RuntimeTransport | None,
-        quota: SessionQuota,
+        quota: SessionQuota | ExecutionQuota,
         *,
         timeout_seconds: float,
         arn_configured: bool = True,

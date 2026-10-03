@@ -106,6 +106,18 @@ resource "aws_iam_role_policy" "tool_logs" {
   })
 }
 
+# The AgentCore gateway control plane has no per-session throttle attribute.
+# MAX_TOOL_CALLS_PER_SESSION is the application cap. It is rendered on the tool
+# function so a hosted call and a local call share one number.
+
+resource "aws_cloudwatch_log_group" "read_tools" {
+  count = var.enabled ? 1 : 0
+
+  name              = "/aws/lambda/${var.name}-read-tools"
+  retention_in_days = var.log_retention_days
+  tags              = var.tags
+}
+
 resource "aws_lambda_function" "read_tools" {
   count = var.enabled ? 1 : 0
 
@@ -123,8 +135,11 @@ resource "aws_lambda_function" "read_tools" {
       GATEWAY_INBOUND_TOKEN          = var.inbound_token
       AGENTCORE_ACTOR_CONTEXT_SECRET = var.actor_context_secret
       DATABASE_URL                   = var.database_url
+      MAX_TOOL_CALLS_PER_SESSION     = tostring(var.max_tool_calls_per_session)
     }
   }
+
+  depends_on = [aws_cloudwatch_log_group.read_tools]
 }
 
 resource "aws_lambda_permission" "gateway" {

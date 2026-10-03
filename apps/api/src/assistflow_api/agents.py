@@ -18,10 +18,32 @@ from assistflow_runtime.hosted_runner import (
     build_data_plane_client,
 )
 from assistflow_runtime.limits import TurnLimits
-from assistflow_runtime.loop import AgentLoop
+from assistflow_runtime.loop import AgentLoop, SessionBudget
 from assistflow_runtime.mock_adapter import MockModelAdapter
 from assistflow_runtime.prompts import PromptRegistry
-from assistflow_runtime.quota import SessionQuota
+from assistflow_runtime.quota import ExecutionQuota, QuotaLimits, SessionQuota
+
+
+def quota_limits(settings: Settings) -> QuotaLimits:
+    """Copy the process caps into the shared quota module."""
+    return QuotaLimits(
+        max_agent_steps=settings.max_agent_steps,
+        max_tool_calls_per_turn=settings.max_tool_calls_per_turn,
+        max_model_calls_per_turn=settings.max_model_calls_per_turn,
+        max_retrievals_per_turn=settings.max_retrievals_per_turn,
+        max_session_minutes=settings.max_session_minutes,
+        max_output_tokens=settings.max_output_tokens,
+        max_sessions_per_day=settings.max_sessions_per_day,
+        max_tool_calls_per_session=settings.max_tool_calls_per_session,
+        max_input_tokens_per_call=settings.max_bedrock_input_tokens_per_call,
+        max_output_tokens_per_call=settings.max_bedrock_output_tokens_per_call,
+        max_memory_events_per_session=settings.max_memory_events_per_session,
+    )
+
+
+def execution_quota(settings: Settings) -> ExecutionQuota:
+    """One quota object for the runner, the gateway, and the cost view."""
+    return ExecutionQuota(quota_limits(settings))
 
 
 def build_model_adapter(settings: Settings) -> ModelAdapter:
@@ -49,14 +71,20 @@ class TurnRunner(Protocol):
 class InProcessAgentRunner:
     """Run the shared loop in this process."""
 
-    def __init__(self, settings: Settings, adapter: ModelAdapter) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        adapter: ModelAdapter,
+        quota: SessionBudget | None = None,
+    ) -> None:
         self._settings = settings
         self._adapter = adapter
+        self._quota = quota
         self._loop: AgentLoop | None = None
 
     def bind(self, gateway: ToolGateway) -> AgentRunner:
         settings = self._settings
-        runner = InProcessAgentRunner(settings, self._adapter)
+        runner = InProcessAgentRunner(settings, self._adapter, self._quota)
         runner._loop = self.build_loop(gateway)
         return runner
 
@@ -77,6 +105,7 @@ class InProcessAgentRunner:
             ),
             compose=reply_from_tools,
             store_debug=(settings.trace_debug and settings.execution_mode is ExecutionMode.LOCAL),
+            quota=self._quota,
             guardrail=build_guardrail_filter(
                 bedrock_enabled=settings.bedrock_enabled,
                 guardrails_enabled=settings.guardrails_enabled,
@@ -104,7 +133,7 @@ class InProcessAgentRunner:
 def build_agent_runner(
     settings: Settings,
     *,
-    quota: SessionQuota | None = None,
+    quota: SessionQuota | ExecutionQuota | None = None,
     transport: RuntimeTransport | None = None,
     adapter: ModelAdapter | None = None,
 ) -> TurnRunner | None:
@@ -114,12 +143,12 @@ def build_agent_runner(
     if settings.agentcore_enabled:
         return _hosted_runner(settings, quota, transport)
     selected = adapter if adapter is not None else build_model_adapter(settings)
-    return InProcessAgentRunner(settings, selected)
+    return InProcessAgentRunner(settings, selected, quota)
 
 
 def _hosted_runner(
     settings: Settings,
-    quota: SessionQuota | None,
+    quota: SessionQuota | ExecutionQuota | None,
     transport: RuntimeTransport | None,
 ) -> AgentCoreRuntimeRunner:
     """Build the hosted runner. An empty ARN does not construct a cloud client."""

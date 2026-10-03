@@ -136,6 +136,14 @@ resource "aws_iam_role_policy" "consumer" {
   })
 }
 
+resource "aws_cloudwatch_log_group" "consumer" {
+  count = var.enabled ? 1 : 0
+
+  name              = "/aws/lambda/${var.name}-consumer"
+  retention_in_days = var.log_retention_days
+  tags              = var.tags
+}
+
 resource "aws_lambda_function" "consumer" {
   count = var.enabled ? 1 : 0
 
@@ -154,6 +162,8 @@ resource "aws_lambda_function" "consumer" {
       DATABASE_URL = var.database_url
     }
   }
+
+  depends_on = [aws_cloudwatch_log_group.consumer]
 }
 
 resource "aws_lambda_event_source_mapping" "consumer" {

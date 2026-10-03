@@ -195,7 +195,52 @@ def cost_check(environ: Mapping[str, str]) -> int:
         )
         return 1
     print("Monthly budget assistflow-monthly is $5 with alert thresholds at $1, $3, and $5.")
+    configuration = _aws_json(
+        [
+            "lambda",
+            "get-function-configuration",
+            "--function-name",
+            API_FUNCTION_NAME,
+        ],
+        region,
+        environ,
+    )
+    if configuration is None or not kill_switches_off(configuration):
+        print(
+            "The deployed API task is missing or does not keep the kill switches off. "
+            "Cost check did not succeed."
+        )
+        return 1
+    print("The deployed API task keeps hosted features and the assistant off.")
     return 0
+
+
+API_FUNCTION_NAME = "assistflow-dev-api"
+KILL_SWITCH_ENV = {
+    "LOCAL_ONLY_MODE": "true",
+    "AWS_ENABLED": "false",
+    "AGENTCORE_ENABLED": "false",
+    "BEDROCK_ENABLED": "false",
+    "MANAGED_RAG_ENABLED": "false",
+    "LONG_TERM_MEMORY_ENABLED": "false",
+    "GUARDRAILS_ENABLED": "false",
+    "AI_ENABLED": "false",
+}
+
+
+def kill_switches_off(configuration: Mapping[str, object]) -> bool:
+    """True when the deployed task keeps discretionary AI and AWS features off."""
+    environment = configuration.get("Environment")
+    if not isinstance(environment, dict):
+        return False
+    variables = environment.get("Variables")
+    if not isinstance(variables, dict):
+        return False
+    for key, expected in KILL_SWITCH_ENV.items():
+        value = variables.get(key)
+        if not isinstance(value, str) or value.strip().lower() != expected:
+            return False
+    return True
 
 
 def budget_configuration_ok(root: Path) -> bool:

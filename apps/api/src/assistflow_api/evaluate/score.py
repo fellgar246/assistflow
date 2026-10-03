@@ -5,9 +5,9 @@ from uuid import UUID
 
 from assistflow_contracts.agent import AgentResult
 from assistflow_contracts.gateway import TIER3_TOOL_NAMES
-from assistflow_runtime.loop import ABSTAIN_MESSAGE
 
 from assistflow_api.evaluate.schema import METRIC_NAMES, Scenario
+from assistflow_runtime.loop import ABSTAIN_MESSAGE
 
 # Facts the seeded catalog can leak into an answer that never retrieved them.
 _SEEDED_FACTS = ("4599", "2200", "2099-06-15", "DFW", "Northline")

@@ -19,7 +19,13 @@ Safe infrastructure defaults:
 - managed retrieval off;
 - schedules off.
 
-`LOCAL_ONLY_MODE=true` disables discretionary AI and AWS features. The local app keeps working.
+`LOCAL_ONLY_MODE=true` disables the assistant and discretionary AWS features. The local app still serves health, domain reads, and stored conversations. A chat turn stores an acknowledgement and does not call a model. `AI_ENABLED=false` stops the assistant even when AWS flags stay on.
+
+Session, tool, token, and memory caps live in one module. The runner, the gateway, and memory ask that module before provider work. A full daily session quota is a typed API error. The hosted gateway control plane cannot express a per-session tool throttle, so the application cap applies in local mode and on the hosted tool function.
+
+Support agents read session, token, and tool counters from the process. The cost view may link to the budgets console. It does not call a billing API. aws-demo keeps successful traces short and still logs failures with the correlation id.
+
+CloudWatch log groups created by this stack keep logs for 14 days or less. A cleanup command lists resources tagged `Project=assistflow` and `AutoCleanup=true`. It deletes nothing unless the operator executes it, and it refuses every environment except dev. The cost check, when credentials exist, also reads the deployed API task and expects the kill switches to stay off.
 
 When AWS resources are applied later, they carry these tags: `Project=assistflow`, `Environment=dev`, `ManagedBy=terraform`, `CostCenter=learning`, `AutoCleanup=true`.
 

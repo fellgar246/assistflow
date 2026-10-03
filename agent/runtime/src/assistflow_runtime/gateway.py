@@ -117,6 +117,13 @@ class UrllibGatewayTransport:
         return parsed
 
 
+class ToolCallQuota(Protocol):
+    """Session tool cap. A returned message means the call must not leave the process."""
+
+    def claim_tool_call(self, session_id: str) -> str | None:
+        """Reserve one tool call or return the denial message."""
+
+
 class AgentCoreToolGateway:
     """Call the hosted gateway with tools/list and tools/call.
 
@@ -130,10 +137,12 @@ class AgentCoreToolGateway:
         *,
         inbound_token: str,
         context_secret: str,
+        tool_quota: ToolCallQuota | None = None,
     ) -> None:
         self._transport = transport
         self._token = inbound_token
         self._secret = context_secret
+        self._tool_quota = tool_quota
 
     def list_tools(self) -> list[ToolSchema]:
         try:
@@ -189,6 +198,9 @@ class AgentCoreToolGateway:
                 "gateway_unavailable",
                 "The hosted gateway is not configured.",
             )
+        denied = _tool_quota_denial(self._tool_quota, actor_context)
+        if denied is not None:
+            return _result(name, arguments, "blocked", "tool_quota_exceeded", denied)
         headers = self._auth_headers()
         headers["x-actor-context"] = sign_actor_context(actor_context, self._secret)
         try:
@@ -221,6 +233,7 @@ def build_agentcore_gateway(
     token: str,
     secret: str,
     timeout_seconds: float = 3.0,
+    tool_quota: ToolCallQuota | None = None,
 ) -> AgentCoreToolGateway:
     """Build the hosted client. An empty URL does not open a connection."""
     endpoint = url.strip()
@@ -228,7 +241,22 @@ def build_agentcore_gateway(
         transport: GatewayTransport = UnavailableGatewayTransport()
     else:
         transport = UrllibGatewayTransport(endpoint, timeout_seconds)
-    return AgentCoreToolGateway(transport, inbound_token=token, context_secret=secret)
+    return AgentCoreToolGateway(
+        transport,
+        inbound_token=token,
+        context_secret=secret,
+        tool_quota=tool_quota,
+    )
+
+
+def _tool_quota_denial(
+    quota: ToolCallQuota | None,
+    actor_context: GatewayActor | None,
+) -> str | None:
+    """Ask the shared quota before a hosted tool call. A missing session is not counted."""
+    if quota is None or actor_context is None or actor_context.conversation_id is None:
+        return None
+    return quota.claim_tool_call(str(actor_context.conversation_id))
 
 
 def _published_tool(item: object) -> ToolSchema | None:

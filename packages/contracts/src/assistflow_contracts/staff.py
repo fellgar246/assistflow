@@ -110,6 +110,20 @@ class TraceSummary(BaseModel):
     items: list[TraceTurnView]
 
 
+class CostCounters(BaseModel):
+    """Process counters for an operator. This payload does not call a billing API."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sessions: int = Field(ge=0)
+    max_sessions_per_day: int = Field(ge=1)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    tool_calls: int = Field(ge=0)
+    max_tool_calls_per_session: int = Field(ge=1)
+    budget_console_url: str
+
+
 class TicketNoteView(BaseModel):
     model_config = ConfigDict(frozen=True)
 

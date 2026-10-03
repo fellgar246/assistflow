@@ -85,6 +85,7 @@ Support reads:
 | POST | `/dev/issuer/session` |
 | GET | `/dev/session` |
 | GET | `/dev/staff` |
+| GET | `/staff/cost` |
 | GET | `/staff/inbox` |
 | GET | `/staff/conversations/{conversation_id}` |
 | GET | `/staff/conversations/{conversation_id}/messages` |
@@ -106,7 +107,11 @@ List routes take `limit` (default 20, maximum 100) and an opaque `cursor`. The g
 
 Stop the database with `make down`.
 
-`LOCAL_ONLY_MODE=true` forces hosted-agent, hosted-model, guardrail, managed-retrieval, long-term-memory, and async-worker flags off, and it forces retrieval back to the local index even if `RAG_PROVIDER` names an AWS provider. Credentials are read from the environment only. Do not commit a filled `.env` file.
+`LOCAL_ONLY_MODE=true` forces the assistant, hosted-agent, hosted-model, guardrail, managed-retrieval, long-term-memory, and async-worker flags off, and it forces retrieval back to the local index even if `RAG_PROVIDER` names an AWS provider. A customer can still open a conversation and read an order. The first customer message stores a fixed acknowledgement and does not call a model. `AI_ENABLED=false` is the same stop for the assistant while the AWS flags stay as they are: ordinary reads and writes still work, and the model adapter is not called. Credentials are read from the environment only. Do not commit a filled `.env` file.
+
+Daily sessions, tool calls, and token ceilings are enforced before a provider call. A new session past `MAX_SESSIONS_PER_DAY` returns `session_quota_exceeded` and does not call the model. The same module caps tool calls per session, including local runs that have no gateway. The AgentCore gateway control plane has no per-session throttle, so the hosted tool function receives `MAX_TOOL_CALLS_PER_SESSION` and the application enforces that number.
+
+`GET /staff/cost` is limited to a support agent. It shows the process session, token, and tool counters, plus a link to the AWS Budgets console. It does not call a billing API. In aws-demo, successful traces keep a short line. Failures are still logged with the correlation id. Set `LOG_SUCCESS_SAMPLING=false` to store the full safe line.
 
 Creating a ticket, escalating a conversation, consuming an approval, and resolving a conversation each record an outbox row in the same transaction as the change. The HTTP response returns before a consumer runs. The API publishes that row afterward. A publish failure is logged and the row stays for a later attempt. It does not undo the change. Locally the publisher is an in-process queue drained after the response. The same handlers write an in-app notice, a fan-out audit row, a short summary when a conversation resolves, and a marker on a small fraction of resolved conversations (`EVAL_SAMPLE_RATE`, default `0.05`) for later evaluation. Delivering one event id twice does not repeat those writes. A summary failure leaves the conversation resolved. The notice email is a log line, not a mailbox. An EventBridge or SQS client is constructed only when `AWS_ENABLED` and `ASYNC_WORKERS_ENABLED` are both true. A normal Terraform apply leaves the queue, the bus, and the consumer uncreated until `enable_async_workers` is true.
 
@@ -219,7 +224,14 @@ make aws-smoke
 make aws-cost-check
 ```
 
-The cost check expects a monthly budget of $5 with alerts at $1, $3, and $5. Those alerts do not turn features off.
+The cost check expects a monthly budget of $5 with alerts at $1, $3, and $5. Those alerts do not turn features off. When credentials exist it also reads the deployed API function `assistflow-dev-api` and expects the kill switches to stay off: local-only mode, the assistant, and the hosted feature flags.
+
+Cleanup lists dev resources tagged `Project=assistflow` and `AutoCleanup=true`. The default is a dry run and deletes nothing. It refuses to run when the environment is not `dev`.
+
+```bash
+make aws-cleanup
+python scripts/cleanup_tagged.py --execute
+```
 
 Destroy deletes the dev environment only. Production is out of scope. After it finishes, plan again and expect no resources from this stack:
 
@@ -259,7 +271,8 @@ make eval
 | `aws-plan` | Plan the dev stack |
 | `aws-deploy` | Apply the dev stack |
 | `aws-smoke` | Health and seeded-order read; fails without credentials |
-| `aws-cost-check` | Confirm the $5 budget and its alerts |
+| `aws-cost-check` | Confirm the $5 budget, its alerts, and the kill switches on the dev API |
+| `aws-cleanup` | Dry-run list of tagged dev resources. Pass `--execute` to delete them |
 | `aws-destroy` | Destroy the dev stack only |
 
 Browser tests are scaffolded with Playwright and are not part of `make test`. Install browsers first, then run `npm --prefix apps/web run test:e2e`.

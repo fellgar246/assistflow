@@ -32,7 +32,7 @@ The default execution profile is local:
 - cloud adapters stay behind interfaces and are not imported while AWS is disabled;
 - the in-process assistant proposes tool calls, writes a trace, and does not import a hosted-model SDK.
 
-`LOCAL_ONLY_MODE=true` is a hard stop. It turns those hosted flags off and forces the local retrieval provider even when the rest of the environment asks for an AWS provider. The API still serves health checks.
+`LOCAL_ONLY_MODE=true` is a hard stop. It turns the assistant and those hosted flags off and forces the local retrieval provider even when the rest of the environment asks for an AWS provider. The API still serves health checks, domain reads, and stored conversations. A chat turn stores an acknowledgement and does not call a model. Quotas for sessions, tool calls, and tokens refuse the work before a provider call. Support agents can read the process counters at `GET /staff/cost`. That route links to the budgets console and does not call a billing API.
 
 Retrieval uses one port. The local index is the default. An S3 provider scores the same published files after an operator syncs them into a private bucket. A managed knowledge base stays behind its own flag and requires a tenant metadata filter or a base per tenant. The turn loop does not construct either client.
 

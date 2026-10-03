@@ -46,6 +46,7 @@ from assistflow_api.approvals import confirm_stored_approval, present_approval
 from assistflow_api.config import ExecutionMode, Settings
 from assistflow_api.deps import PageQuery, correlation_id, get_session, page_query, require_customer
 from assistflow_api.turns import complete_agent_turn, tool_activity_for
+from assistflow_runtime.quota import SESSION_QUOTA_MESSAGE, ExecutionQuota
 from assistflow_runtime.redaction import redact_text
 
 router = APIRouter()
@@ -57,6 +58,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     404: {"model": Problem},
     409: {"model": Problem},
     422: {"model": Problem},
+    429: {"model": Problem},
 }
 
 DevActor = Annotated[Actor, Depends(require_customer)]
@@ -213,10 +215,13 @@ def post_customer_message(
         _context(actor, correlation),
         acknowledge=not assistant_enabled,
     )
+    quota = getattr(request.app.state, "quota", None)
     if assistant_enabled and not result.replayed:
+        if isinstance(quota, ExecutionQuota) and not quota.reserve(str(result.conversation_id)):
+            raise SupportError("session_quota_exceeded", SESSION_QUOTA_MESSAGE, 429)
         runner = build_agent_runner(
             settings,
-            quota=getattr(request.app.state, "session_quota", None),
+            quota=quota if isinstance(quota, ExecutionQuota) else None,
             transport=getattr(request.app.state, "runtime_transport", None),
             adapter=_model_adapter(request),
         )
@@ -235,6 +240,7 @@ def post_customer_message(
                 max_chunks=settings.max_chunks_per_retrieval,
                 score_floor=settings.retrieval_score_floor,
                 settings=settings,
+                quota=quota if isinstance(quota, ExecutionQuota) else None,
             )
             failed = next(
                 (

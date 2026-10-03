@@ -17,7 +17,7 @@ The default profile is local. Missing configuration resolves to that profile:
 - retrieval uses the local database;
 - long-term memory and managed retrieval are off.
 
-Cloud adapters sit behind interfaces. Domain services must not import a hosted-model or hosted-agent client at import time while AWS is disabled. `LOCAL_ONLY_MODE=true` forces those hosted flags off and keeps the API able to serve health checks.
+Cloud adapters sit behind interfaces. Domain services must not import a hosted-model or hosted-agent client at import time while AWS is disabled. `LOCAL_ONLY_MODE=true` forces the assistant and those hosted flags off. The API still serves health checks, domain reads, and stored conversations, and it does not construct a hosted client.
 
 A mock agent is allowed in local mode. That mock does not call a hosted model.
 

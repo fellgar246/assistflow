@@ -10,6 +10,7 @@ from assistflow_contracts import HealthStatus
 from fastapi import FastAPI
 from sqlalchemy.engine import Engine
 
+from assistflow_api.agents import execution_quota
 from assistflow_api.auth import install_auth
 from assistflow_api.config import Settings, load_settings, validate_retrieval_settings
 from assistflow_api.correlation import CorrelationMiddleware, LoggingTraceStore, metrics_snapshot
@@ -26,7 +27,6 @@ from assistflow_api.routes.preferences import router as preference_router
 from assistflow_api.routes.staff import router as staff_router
 from assistflow_api.routes.support import router as support_router
 from assistflow_api.sqlite_lock import lock_for
-from assistflow_runtime.quota import SessionQuota
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -81,7 +81,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.state.events = events
     app.state.event_publisher = publisher
     app.state.sqlite_lock = sqlite_lock
-    app.state.session_quota = SessionQuota(resolved.max_sessions_per_day)
+    quota = execution_quota(resolved)
+    app.state.quota = quota
+    app.state.session_quota = quota
     register_error_handlers(app)
     app.include_router(local_login_router)
     app.include_router(document_router)

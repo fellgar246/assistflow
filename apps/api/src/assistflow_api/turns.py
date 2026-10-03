@@ -63,6 +63,7 @@ from assistflow_runtime import (
     DEFAULT_PROMPT_VERSION,
     bound_history,
 )
+from assistflow_runtime.quota import ExecutionQuota
 from assistflow_runtime.redaction import REDACTED, redact_text
 from assistflow_tools import (
     LocalToolGateway,
@@ -91,6 +92,7 @@ def complete_agent_turn(
     settings: Settings | None = None,
     retriever: KnowledgeRetriever | None = None,
     memory: MemoryPorts | None = None,
+    quota: ExecutionQuota | None = None,
 ) -> AgentResult:
     """Ask the runner for a reply, run tier-0 tools, and persist the answer."""
     started = time.perf_counter()
@@ -110,6 +112,7 @@ def complete_agent_turn(
             score_floor=score_floor,
             settings=settings,
             retriever=retriever,
+            tool_quota=quota,
         )
     )
     tool_actor = gateway_actor_for(
@@ -258,6 +261,7 @@ def build_turn_gateway(
     score_floor: float,
     settings: Settings | None = None,
     retriever: KnowledgeRetriever | None = None,
+    tool_quota: ExecutionQuota | None = None,
 ) -> LocalToolGateway:
     """Bind the local gateway. Tier 1 writes are on. Tier 2 mutation stays behind approval."""
     if retriever is None:
@@ -273,7 +277,12 @@ def build_turn_gateway(
         )
     handlers = service_handlers(session, retriever=retriever)
     registry = build_registry(handlers, approved=approved_write_handlers(session))
-    return LocalToolGateway(registry, max_executions=max_tool_calls, writes_enabled=True)
+    return LocalToolGateway(
+        registry,
+        max_executions=max_tool_calls,
+        writes_enabled=True,
+        tool_quota=tool_quota,
+    )
 
 
 def tool_activity_for(

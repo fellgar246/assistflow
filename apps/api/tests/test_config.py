@@ -51,6 +51,7 @@ def test_missing_environment_resolves_to_local_profile() -> None:
     assert settings.guardrail_sensitive_information_strength == "HIGH"
     assert settings.guardrail_prompt_attack_strength == "HIGH"
     assert settings.guardrail_contextual_grounding_threshold is None
+    assert settings.success_trace_sampling is False
     assert settings.auth_issuer == ""
     assert settings.auth_audience == ""
     assert settings.auth_jwks_url == ""
@@ -66,6 +67,7 @@ def test_aws_demo_profile_enables_hosted_agent_and_model_only() -> None:
     assert settings.rag_provider is RagProvider.LOCAL
     assert settings.long_term_memory_enabled is False
     assert settings.managed_rag_enabled is False
+    assert settings.success_trace_sampling is True
 
 
 def test_explicit_flag_overrides_profile_default() -> None:
@@ -88,6 +90,7 @@ def test_local_only_mode_forces_hosted_features_off() -> None:
             "RAG_PROVIDER": "managed",
             "GUARDRAILS_ENABLED": "true",
             "ASYNC_WORKERS_ENABLED": "true",
+            "AI_ENABLED": "true",
         }
     )
 
@@ -98,9 +101,10 @@ def test_local_only_mode_forces_hosted_features_off() -> None:
     assert settings.managed_rag_enabled is False
     assert settings.long_term_memory_enabled is False
     assert settings.rag_provider is RagProvider.LOCAL
-    assert settings.ai_enabled is True
+    assert settings.ai_enabled is False
     assert settings.guardrails_enabled is False
     assert settings.async_workers_enabled is False
+    assert settings.success_trace_sampling is False
 
 
 def test_invalid_guardrail_strength_is_rejected() -> None:
