@@ -180,6 +180,60 @@ A fixed set of 10 address follow-ups is compared in [the session-memory note](do
 
 Responses include `X-Correlation-Id`. The same id is on the trace, the tool execution, and the audit event. `GET /metrics` lists the local counters. Set `METRICS_ENABLED=true` together with `AWS_ENABLED=true` to publish them. The CloudWatch log groups and dashboard stay off until `enable_observability` is true. [Diagnose a failed tool](docs/operations/diagnose-a-failed-tool.md) walks one failed lookup from that id.
 
+## Dev environment
+
+The dev stack is optional. A plan with the default variables creates no hosted agent, memory, managed retrieval, schedule, or user pool. PostgreSQL stays the system of record. DynamoDB metadata tables stay off unless `enable_dynamodb_metadata` is true, and the application does not write them.
+
+Revalidate current prices before you apply. This repository does not embed a provider price.
+
+Create remote state once. The bucket and the lock table are not committed:
+
+```bash
+make aws-bootstrap
+```
+
+That writes `infra/environments/dev/backend.hcl`. Then:
+
+```bash
+make aws-plan
+make aws-deploy
+```
+
+`make aws-deploy` applies the variables you set. Keep the same flags on later applies, including a hosted-agent deploy, or Terraform will remove resources whose flags flipped back to false. To host the dev API, turn on logs, record the budget, and publish the deploy role:
+
+```bash
+export TF_VAR_enable_api=true
+export TF_VAR_enable_observability=true
+export TF_VAR_budget_enabled=true
+export TF_VAR_enable_github_oidc=true
+export TF_VAR_github_repository=<owner>/<name>
+export TF_VAR_state_bucket_name=<bootstrap-bucket>
+make aws-deploy
+```
+
+Smoke calls `GET /health` and `GET /orders/ORD-10482` on the deployed API. Both commands exit with a message when AWS credentials are missing. They do not report success.
+
+```bash
+export DEV_API_BASE_URL=<api-base-url>
+make aws-smoke
+make aws-cost-check
+```
+
+The cost check expects a monthly budget of $5 with alerts at $1, $3, and $5. Those alerts do not turn features off.
+
+Destroy deletes the dev environment only. Production is out of scope. After it finishes, plan again and expect no resources from this stack:
+
+```bash
+ASSISTFLOW_DESTROY_DEV=true make aws-destroy
+make aws-plan
+```
+
+GitHub Actions assumes a deploy role with OIDC. It does not read static access keys. Create a GitHub environment named `dev`, then set the repository variables `AWS_DEPLOY_ROLE_ARN`, `AWS_STATE_BUCKET`, and `AWS_LOCK_TABLE`. Pushes to `main`, and manual dispatch, deploy the dev API. Pull requests do not. The hosted agent stays on the manual **Deploy hosted agent** workflow.
+
+Apply that set once locally so the role exists before Actions can assume it. Copy the `deploy_role_arn` output into `AWS_DEPLOY_ROLE_ARN`. The main deploy leaves the hosted agent, memory, managed retrieval, schedules, and Cognito off.
+
+Safe defaults live in `infra/environments/dev/dev.tfvars.example`.
+
 ## Quality gates
 
 ```bash
@@ -201,6 +255,12 @@ make eval
 | `deploy-agentcore` | Operator-only hosted runtime package and apply |
 | `smoke-agentcore` | Operator-only hosted order-fact check; skips without credentials |
 | `smoke-gateway` | Operator-only hosted tools/list and tools/call; skips without credentials |
+| `aws-bootstrap` | One-time remote state bucket and lock table |
+| `aws-plan` | Plan the dev stack |
+| `aws-deploy` | Apply the dev stack |
+| `aws-smoke` | Health and seeded-order read; fails without credentials |
+| `aws-cost-check` | Confirm the $5 budget and its alerts |
+| `aws-destroy` | Destroy the dev stack only |
 
 Browser tests are scaffolded with Playwright and are not part of `make test`. Install browsers first, then run `npm --prefix apps/web run test:e2e`.
 

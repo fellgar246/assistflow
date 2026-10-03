@@ -1,0 +1,92 @@
+name: Deploy dev
+
+# Deploy runs on the main branch and on manual dispatch.
+# Pull requests, including those from forks, do not trigger this workflow.
+# Do not print credentials or state files.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: dev-environment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.repository.fork == false && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the deploy role
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$AWS_DEPLOY_ROLE_ARN" ]; then
+            echo "Set the AWS_DEPLOY_ROLE_ARN repository variable. Deploy did not run."
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: assistflow-dev
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+
+      - name: Write the remote state config
+        env:
+          AWS_STATE_BUCKET: ${{ vars.AWS_STATE_BUCKET }}
+          AWS_LOCK_TABLE: ${{ vars.AWS_LOCK_TABLE }}
+        run: |
+          if [ -z "$AWS_STATE_BUCKET" ] || [ -z "$AWS_LOCK_TABLE" ]; then
+            echo "Set AWS_STATE_BUCKET and AWS_LOCK_TABLE. Deploy did not run."
+            exit 1
+          fi
+          cat > infra/environments/dev/backend.hcl <<EOF
+          bucket         = "$AWS_STATE_BUCKET"
+          region         = "us-east-1"
+          dynamodb_table = "$AWS_LOCK_TABLE"
+          EOF
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages --all-groups
+
+      - name: Deploy
+        env:
+          TF_IN_AUTOMATION: "true"
+          TF_VAR_enable_api: "true"
+          TF_VAR_budget_enabled: "true"
+          TF_VAR_enable_observability: "true"
+          TF_VAR_enable_github_oidc: "true"
+          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_state_bucket_name: ${{ vars.AWS_STATE_BUCKET }}
+        run: make aws-deploy
+
+      - name: Smoke
+        env:
+          TF_IN_AUTOMATION: "true"
+        run: |
+          url="$(terraform -chdir=infra/environments/dev output -raw api_base_url)"
+          if [ -z "$url" ]; then
+            echo "The dev API URL is empty. Smoke did not run."
+            exit 1
+          fi
+          DEV_API_BASE_URL="$url" make aws-smoke

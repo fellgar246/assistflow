@@ -1,0 +1,82 @@
+name: Deploy hosted agent
+
+# Manual only. Pull requests and branch pushes do not deploy the hosted agent.
+# Do not print credentials or state files.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: dev-environment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the deploy role
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$AWS_DEPLOY_ROLE_ARN" ]; then
+            echo "Set the AWS_DEPLOY_ROLE_ARN repository variable. Deploy did not run."
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: assistflow-dev
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+
+      - name: Write the remote state config
+        env:
+          AWS_STATE_BUCKET: ${{ vars.AWS_STATE_BUCKET }}
+          AWS_LOCK_TABLE: ${{ vars.AWS_LOCK_TABLE }}
+        run: |
+          if [ -z "$AWS_STATE_BUCKET" ] || [ -z "$AWS_LOCK_TABLE" ]; then
+            echo "Set AWS_STATE_BUCKET and AWS_LOCK_TABLE. Deploy did not run."
+            exit 1
+          fi
+          cat > infra/environments/dev/backend.hcl <<EOF
+          bucket         = "$AWS_STATE_BUCKET"
+          region         = "us-east-1"
+          dynamodb_table = "$AWS_LOCK_TABLE"
+          EOF
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages --all-groups
+
+      - name: Deploy the hosted agent
+        env:
+          TF_IN_AUTOMATION: "true"
+          TF_VAR_enable_api: "true"
+          TF_VAR_budget_enabled: "true"
+          TF_VAR_enable_observability: "true"
+          TF_VAR_enable_github_oidc: "true"
+          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_state_bucket_name: ${{ vars.AWS_STATE_BUCKET }}
+          AGENTCORE_ENABLED: "true"
+          AGENTCORE_CONTAINER_IMAGE_URI: ${{ vars.AGENTCORE_CONTAINER_IMAGE_URI }}
+          GATEWAY_INBOUND_TOKEN: ${{ secrets.GATEWAY_INBOUND_TOKEN }}
+          AGENTCORE_ACTOR_CONTEXT_SECRET: ${{ secrets.AGENTCORE_ACTOR_CONTEXT_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: make deploy-agentcore

@@ -22,6 +22,72 @@ variable "cost_center" {
   default     = "learning"
 }
 
+variable "enable_api" {
+  description = "Dev API Gateway and probe function. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "api_package_path" {
+  description = "Zip for the dev API probe. Required only when enable_api is true."
+  type        = string
+  default     = ""
+}
+
+variable "api_package_hash" {
+  description = "Base64 SHA-256 of the dev API probe. Empty leaves the hash unset."
+  type        = string
+  default     = ""
+}
+
+variable "enable_dynamodb_metadata" {
+  description = "Optional DynamoDB metadata tables. PostgreSQL stays the system of record. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "enable_github_oidc" {
+  description = "GitHub OIDC provider and dev deploy role. Disabled by default."
+  type        = bool
+  default     = false
+}
+
+variable "github_repository" {
+  description = "Repository allowed to assume the deploy role, as owner/name."
+  type        = string
+  default     = ""
+}
+
+variable "github_deploy_environment" {
+  description = "GitHub environment the deploy role trusts."
+  type        = string
+  default     = "dev"
+}
+
+variable "state_bucket_name" {
+  description = "Remote state bucket name. Required only when enable_github_oidc is true."
+  type        = string
+  default     = ""
+}
+
+variable "lock_table_name" {
+  description = "DynamoDB table that locks remote state."
+  type        = string
+  default     = "assistflow-dev-tf-lock"
+}
+
+variable "bedrock_model_id" {
+  description = "Foundation model id the hosted runtime may invoke."
+  type        = string
+  default     = "anthropic.claude-3-5-haiku-20241022-v1:0"
+}
+
+variable "bedrock_guardrail_id" {
+  description = "Guardrail id the hosted runtime may apply. Empty omits that permission."
+  type        = string
+  default     = ""
+}
+
 variable "budget_enabled" {
   description = "Create the monthly AWS budget. Left off until a live stack is applied."
   type        = bool

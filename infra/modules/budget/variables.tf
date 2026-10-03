@@ -21,3 +21,15 @@ variable "time_period_start" {
   type        = string
   default     = "2026-01-01_00:00"
 }
+
+variable "tags" {
+  description = "Tags applied to the budget and its alert topic."
+  type        = map(string)
+  default = {
+    Project     = "assistflow"
+    Environment = "dev"
+    ManagedBy   = "terraform"
+    CostCenter  = "learning"
+    AutoCleanup = "true"
+  }
+}

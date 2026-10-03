@@ -7,6 +7,13 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  # Bucket, region, and lock table come from backend.hcl.
+  # That file is produced by the one-time bootstrap and is not committed.
+  backend "s3" {
+    key     = "assistflow/dev/terraform.tfstate"
+    encrypt = true
+  }
 }
 
 locals {
@@ -47,13 +54,46 @@ module "budget" {
 
   enabled           = var.budget_enabled
   monthly_limit_usd = var.monthly_budget_usd
+  tags              = local.required_tags
+}
+
+module "api" {
+  source = "../../modules/api"
+
+  enabled      = var.enable_api
+  package_path = var.api_package_path
+  package_hash = var.api_package_hash
+  tags         = local.required_tags
+}
+
+module "metadata" {
+  source = "../../modules/metadata"
+
+  enabled = var.enable_dynamodb_metadata
+  tags    = local.required_tags
+}
+
+module "github_oidc" {
+  source = "../../modules/github_oidc"
+
+  enabled            = var.enable_github_oidc
+  github_repository  = var.github_repository
+  deploy_environment = var.github_deploy_environment
+  aws_region         = var.aws_region
+  project            = var.project
+  state_bucket_name  = var.state_bucket_name
+  lock_table_name    = var.lock_table_name
+  tags               = local.required_tags
 }
 
 module "agentcore" {
   source = "../../modules/agentcore"
 
-  enabled             = var.enable_agentcore
-  container_image_uri = var.agentcore_container_image_uri
+  enabled              = var.enable_agentcore
+  container_image_uri  = var.agentcore_container_image_uri
+  aws_region           = var.aws_region
+  bedrock_model_id     = var.bedrock_model_id
+  bedrock_guardrail_id = var.bedrock_guardrail_id
 }
 
 module "agentcore_gateway" {
@@ -106,4 +146,18 @@ module "async_workers" {
   worker_package_hash = var.async_worker_package_hash
   database_url        = var.async_worker_database_url
   tags                = local.required_tags
+}
+
+module "memory" {
+  source = "../../modules/memory"
+
+  enabled = var.enable_long_term_memory
+  tags    = local.required_tags
+}
+
+module "schedules" {
+  source = "../../modules/schedules"
+
+  enabled = var.enable_schedules
+  tags    = local.required_tags
 }

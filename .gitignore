@@ -31,6 +31,8 @@ apps/web/blob-report/
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+infra/environments/**/backend.hcl
+infra/modules/**/.build/
 crash.log
 override.tf
 override.tf.json

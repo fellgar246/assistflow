@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test eval up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore smoke-gateway sync-knowledge
+.PHONY: lint typecheck test eval up down seed lint-api lint-web lint-terraform typecheck-api typecheck-web terraform-validate test-api test-web deploy-agentcore smoke-agentcore smoke-gateway sync-knowledge aws-bootstrap aws-plan aws-deploy aws-smoke aws-cost-check aws-destroy
 
 PYTHON_PATHS := src tests \
 	../../services/conversations/src \
@@ -76,3 +76,22 @@ smoke-gateway:
 
 sync-knowledge:
 	$(UV) run --directory apps/api python -m assistflow_api.sync_knowledge
+
+# Dev environment. Pull-request checks do not run these targets.
+aws-bootstrap:
+	$(UV) run --directory apps/api python ../../scripts/dev_environment.py bootstrap
+
+aws-plan:
+	$(UV) run --directory apps/api python ../../scripts/dev_environment.py plan
+
+aws-deploy:
+	$(UV) run --directory apps/api python ../../scripts/dev_environment.py deploy
+
+aws-smoke:
+	$(UV) run --directory apps/api python ../../scripts/dev_environment.py smoke
+
+aws-cost-check:
+	$(UV) run --directory apps/api python ../../scripts/dev_environment.py cost-check
+
+aws-destroy:
+	$(UV) run --directory apps/api python ../../scripts/dev_environment.py destroy

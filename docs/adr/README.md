@@ -21,3 +21,4 @@
 | [0017](0017-tenant-comes-from-the-verified-token.md) | The tenant comes from the verified token |
 | [0018](0018-one-correlation-id-diagnoses-a-failed-tool.md) | One correlation id diagnoses a failed tool |
 | [0019](0019-local-evaluation-suite-is-the-gate.md) | The local evaluation suite is the gate |
+| [0020](0020-dev-environment-deploys-through-oidc.md) | The dev environment deploys through OIDC |

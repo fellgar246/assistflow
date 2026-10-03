@@ -1,0 +1,21 @@
+aws_region  = "us-east-1"
+project     = "assistflow"
+environment = "dev"
+cost_center = "learning"
+
+enable_api               = false
+enable_dynamodb_metadata = false
+enable_async_workers     = false
+enable_observability     = false
+enable_agentcore         = false
+enable_long_term_memory  = false
+enable_managed_rag       = false
+enable_knowledge_bucket  = false
+enable_schedules         = false
+enable_cognito           = false
+budget_enabled           = false
+enable_github_oidc       = false
+
+monthly_budget_usd   = "5"
+bedrock_model_id     = "anthropic.claude-3-5-haiku-20241022-v1:0"
+bedrock_guardrail_id = ""

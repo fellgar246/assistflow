@@ -6,15 +6,33 @@ output "tags" {
 output "feature_flags" {
   description = "Optional hosted features. All default to off."
   value = {
-    enable_agentcore        = var.enable_agentcore
-    enable_long_term_memory = var.enable_long_term_memory
-    enable_managed_rag      = var.enable_managed_rag
-    enable_knowledge_bucket = var.enable_knowledge_bucket
-    enable_schedules        = var.enable_schedules
-    enable_async_workers    = var.enable_async_workers
-    enable_cognito          = var.enable_cognito
-    enable_observability    = var.enable_observability
+    enable_api               = var.enable_api
+    enable_dynamodb_metadata = var.enable_dynamodb_metadata
+    enable_github_oidc       = var.enable_github_oidc
+    enable_agentcore         = var.enable_agentcore
+    enable_long_term_memory  = var.enable_long_term_memory
+    enable_managed_rag       = var.enable_managed_rag
+    enable_knowledge_bucket  = var.enable_knowledge_bucket
+    enable_schedules         = var.enable_schedules
+    enable_async_workers     = var.enable_async_workers
+    enable_cognito           = var.enable_cognito
+    enable_observability     = var.enable_observability
   }
+}
+
+output "api_base_url" {
+  description = "Dev API invoke URL. Empty while enable_api is false."
+  value       = module.api.api_base_url
+}
+
+output "deploy_role_arn" {
+  description = "GitHub deploy role ARN. Empty while enable_github_oidc is false."
+  value       = module.github_oidc.deploy_role_arn
+}
+
+output "memory_id" {
+  description = "Hosted memory id. Null while enable_long_term_memory is false."
+  value       = module.memory.memory_id
 }
 
 output "operations_dashboard_name" {

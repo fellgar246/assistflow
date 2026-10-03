@@ -1,0 +1,3 @@
+bucket         = "assistflow-dev-tfstate-ACCOUNT_ID"
+region         = "us-east-1"
+dynamodb_table = "assistflow-dev-tf-lock"
